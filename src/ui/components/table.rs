@@ -26,7 +26,7 @@ pub const HEADERS: [&str; 3] = ["Name", "ID", "Info"];
 /// style, every cell is left-padded so text never touches borders, and
 /// each data row is followed by a spacer row so list items breathe.
 pub fn render(frame: &mut Frame, area: Rect, rows: &[RowData], selected: usize) {
-    let header = Row::new(HEADERS.map(|h| Cell::from(Line::from(format!(" {h}")))))
+    let header = Row::new(HEADERS.map(|h| Cell::from(Line::from(h))))
         .style(Style::new().add_modifier(Modifier::BOLD));
 
     // Interleave data rows with empty spacer rows for vertical spacing.
@@ -40,8 +40,8 @@ pub fn render(frame: &mut Frame, area: Rect, rows: &[RowData], selected: usize) 
             ]);
             let cells = vec![
                 Cell::from(name_line),
-                Cell::from(format!(" {}", row.attr1)),
-                Cell::from(format!(" {}", row.attr2)),
+                Cell::from(row.attr1.clone()),
+                Cell::from(row.attr2.clone()),
             ];
             let data_row = if i == selected {
                 Row::new(cells).style(crate::ui::theme::selected())
@@ -67,7 +67,7 @@ pub fn render(frame: &mut Frame, area: Rect, rows: &[RowData], selected: usize) 
         ],
     )
     .header(header)
-    .column_spacing(2)
+    .column_spacing(1)
     .row_highlight_style(crate::ui::theme::selected());
 
     frame.render_widget(table, area);
