@@ -29,7 +29,9 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
         )),
         Line::from(""),
         stat(icons::HOME, "Hostname", data.host.hostname.clone()),
+        Line::from(""),
         stat(icons::TAG, "OS", data.host.os.clone()),
+        Line::from(""),
         stat(icons::SHELL, "Kernel", data.host.kernel.clone()),
         Line::from(""),
         stat(
@@ -41,7 +43,9 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
                 data.regular_user_count()
             ),
         ),
+        Line::from(""),
         stat(icons::GROUPS, "Groups", data.groups.len().to_string()),
+        Line::from(""),
         stat(icons::SESSIONS, "Sessions", data.sessions.len().to_string()),
         Line::from(""),
         stat(

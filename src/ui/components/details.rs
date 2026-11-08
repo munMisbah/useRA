@@ -41,8 +41,8 @@ fn icon_for(key: &str) -> &'static str {
 }
 
 /// Renders key/value fields; values render dimmed when `focused == false`
-/// so the panel visibly responds to focus changes. Each row is prefixed
-/// with the field icon and a blank spacer row separates entries.
+/// so the panel visibly responds to focus changes. Each entry gets a
+/// blank spacer row above it so fields breathe.
 pub fn render(frame: &mut Frame, area: Rect, fields: &[Field], focused: bool) {
     let value_style = if focused {
         crate::ui::theme::base()
@@ -53,6 +53,7 @@ pub fn render(frame: &mut Frame, area: Rect, fields: &[Field], focused: bool) {
         .iter()
         .flat_map(|f| {
             vec![
+                Line::from(""),
                 Line::from(""),
                 Line::from(vec![
                     Span::styled(format!(" {} ", f.icon), crate::ui::theme::accent()),

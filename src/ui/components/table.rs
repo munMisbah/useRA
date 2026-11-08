@@ -23,15 +23,17 @@ pub struct RowData {
 pub const HEADERS: [&str; 3] = ["Name", "ID", "Info"];
 
 /// Renders a three-column table; the selected row gets the accent bar
-/// style, and every cell is left-padded so text never touches borders.
+/// style, every cell is left-padded so text never touches borders, and
+/// each data row is followed by a spacer row so list items breathe.
 pub fn render(frame: &mut Frame, area: Rect, rows: &[RowData], selected: usize) {
     let header = Row::new(HEADERS.map(|h| Cell::from(Line::from(format!(" {h}")))))
         .style(Style::new().add_modifier(Modifier::BOLD));
 
+    // Interleave data rows with empty spacer rows for vertical spacing.
     let body: Vec<Row> = rows
         .iter()
         .enumerate()
-        .map(|(i, row)| {
+        .flat_map(|(i, row)| {
             let name_line = Line::from(vec![
                 Span::styled(format!("{} ", row.icon), crate::ui::theme::dim()),
                 Span::raw(row.name.clone()),
@@ -41,10 +43,17 @@ pub fn render(frame: &mut Frame, area: Rect, rows: &[RowData], selected: usize) 
                 Cell::from(format!(" {}", row.attr1)),
                 Cell::from(format!(" {}", row.attr2)),
             ];
-            if i == selected {
+            let data_row = if i == selected {
                 Row::new(cells).style(crate::ui::theme::selected())
             } else {
                 Row::new(cells)
+            };
+            let spacer = Row::new(vec![Cell::from(""), Cell::from(""), Cell::from("")]);
+            // No spacer after the last row.
+            if i + 1 < rows.len() {
+                vec![data_row, spacer]
+            } else {
+                vec![data_row]
             }
         })
         .collect();

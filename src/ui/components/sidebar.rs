@@ -29,15 +29,21 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             crate::ui::theme::dim()
         };
         lines.push(Line::from(text).set_style(style));
+        // Breathing room between nav items.
+        lines.push(Line::from(""));
     }
 
     // Host info pinned at the bottom, Superfile "Disks" style.
-    if area.height > lines.len() as u16 + 2 {
-        while lines.len() < area.height as usize - 3 {
+    // Reserves room for the two host rows plus the trailing spacer.
+    let min_bottom = 3;
+    let used = lines.len() as u16;
+    if area.height > used + min_bottom as u16 + 1 {
+        while (lines.len() as u16) < area.height - min_bottom - 1 {
             lines.push(Line::from(""));
         }
         lines.push(section_label("Host"));
         lines.push(host_line(app));
+        lines.push(Line::from(""));
     }
 
     frame.render_widget(Paragraph::new(lines), area);

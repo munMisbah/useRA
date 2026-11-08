@@ -37,7 +37,9 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
         )),
         Line::from(""),
         stat(icons::TAG, "Theme", Line::from("dark (fixed in phase 1)")),
+        Line::from(""),
         stat(icons::STATUS, "Privileges", Line::from(priv_label)),
+        Line::from(""),
         stat(
             icons::SHELL,
             "Data source",
