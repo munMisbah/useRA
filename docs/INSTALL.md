@@ -33,13 +33,21 @@ glibc features are weakly referenced and used only when present).
 sudo install -m 755 target/release/usera /usr/local/bin/usera
 ```
 
-## Option B — Prebuilt binary (future release)
+## Option B — One-liner install (release binary)
 
-Downloaded release archives contain a single `usera` binary:
+Once the repository is public on GitHub under `OWNER/useRA` with release
+artifacts attached, users install like Superfile:
 
 ```sh
-sudo install -m 755 usera /usr/local/bin/usera
+bash -c "$(curl -sLo- https://raw.githubusercontent.com/OWNER/useRA/main/install.sh)"
 ```
+
+The script downloads the latest `usera-linux-x86_64.tar.gz` from GitHub
+Releases, verifies its sha256 checksum, and installs to
+`/usr/local/bin` (sudo if needed) or `~/.local/bin` without root.
+
+See [docs/INSTALL.md](docs/INSTALL.md) for manual installation,
+prerequisites, and the Nerd Font setup.
 
 ## Nerd Font requirement
 

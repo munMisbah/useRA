@@ -4,6 +4,21 @@ All notable changes to useRA are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com); versioning
 follows [SemVer](https://semver.org).
 
+## Release artifacts
+
+For each release, attach to the GitHub release:
+
+- `usera-linux-x86_64.tar.gz` — contains the `usera` binary
+- `usera-linux-x86_64.tar.gz.sha256` — `sha256sum` of the tarball
+
+`install.sh` (repo root) consumes exactly these names. Build both with:
+
+```sh
+cargo build --release
+tar -czf usera-linux-x86_64.tar.gz -C target/release usera
+sha256sum usera-linux-x86_64.tar.gz > usera-linux-x86_64.tar.gz.sha256
+```
+
 ## [1.0.0] — 2026-11-09
 
 Initial release. Full user and group management for Debian with an
