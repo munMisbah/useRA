@@ -31,7 +31,10 @@ fn status_error(op: &str, target: &str, output: &std::process::Output) -> OpResu
     } else {
         stderr
     };
-    failure(format!("{op} {target} failed: {stderr}"))
+    let raw = format!("{op} {target} failed: {stderr}");
+    failure(crate::services::user_service::present(
+        op, target, false, &raw,
+    ))
 }
 
 fn command_error(op: &str, target: &str, err: AppError) -> OpResult {

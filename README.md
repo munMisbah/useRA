@@ -102,6 +102,20 @@ The initial development priorities are:
 | R | Remove members (prefilled with current members) |
 | D | Delete group (confirm with YES; user accounts untouched) |
 
+### Security model
+
+- **No auto-elevation**: run `sudo usera` for write operations. Without
+  root, all operations are read-only and write attempts are refused with
+  a clear message.
+- **Audit log**: every executed operation is appended to
+  `/var/log/usera/audit.log` (root) or
+  `$XDG_STATE_HOME/usera/audit.log`. Format: timestamp, OK/FAIL,
+  operation, target, error text. Passwords and hashes are never logged.
+- **System-account guard**: deleting or locking `root` or any system
+  account (UID < 1000) is refused inside the app.
+- **Explicit confirmation**: destructive operations require typing YES;
+  home removal is never implicit.
+
 ### Building and running
 
 ```sh

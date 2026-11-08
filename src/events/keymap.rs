@@ -218,39 +218,71 @@ fn open_group_remove_members(app: &mut App) {
 // --- Modal submission -------------------------------------------------
 
 /// Executes the pending operation described by the modal.
+///
+/// Write operations are refused outright when not running as root
+/// (SECURITY.md §2): the modal closes with a clear message instead of
+/// letting the underlying tool fail.
 fn submit_modal(app: &mut App) {
     let kind = match app.modal.kind.clone() {
         Some(kind) => kind,
         None => return,
     };
 
+    // Privilege gate: every variant below mutates the system.
+    if !app.data.is_root {
+        app.modal.close();
+        app.notify(
+            false,
+            "requires root — run `sudo usera` for administrative operations",
+        );
+        return;
+    }
+
     match kind {
         ModalKind::CreateUser => submit_create_user(app),
         ModalKind::EditShell(user) => {
             let shell = app.modal.fields[0].value.trim().to_string();
             let res = crate::services::user_service::set_shell(&user, &shell);
-            finish(app, res);
+            audit_and_finish(app, "set_shell", &user, res);
         }
         ModalKind::ConfirmLock(user) => {
             if confirmed(app) {
-                finish(app, crate::services::user_service::lock_user(&user));
+                if let Err(res) =
+                    crate::services::user_service::guard_system_account(&user, &app.data.users)
+                {
+                    audit_and_finish(app, "lock_user", &user, res);
+                } else {
+                    let res = crate::services::user_service::lock_user(&user);
+                    audit_and_finish(app, "lock_user", &user, res);
+                }
             } else {
                 refuse_confirmation(app);
             }
         }
         ModalKind::ConfirmUnlock(user) => {
             if confirmed(app) {
-                finish(app, crate::services::user_service::unlock_user(&user));
+                if let Err(res) =
+                    crate::services::user_service::guard_system_account(&user, &app.data.users)
+                {
+                    audit_and_finish(app, "unlock_user", &user, res);
+                } else {
+                    let res = crate::services::user_service::unlock_user(&user);
+                    audit_and_finish(app, "unlock_user", &user, res);
+                }
             } else {
                 refuse_confirmation(app);
             }
         }
         ModalKind::ConfirmDelete { user, remove_home } => {
             if confirmed(app) {
-                finish(
-                    app,
-                    crate::services::user_service::delete_user(&user, remove_home),
-                );
+                if let Err(res) =
+                    crate::services::user_service::guard_system_account(&user, &app.data.users)
+                {
+                    audit_and_finish(app, "delete_user", &user, res);
+                } else {
+                    let res = crate::services::user_service::delete_user(&user, remove_home);
+                    audit_and_finish(app, "delete_user", &user, res);
+                }
             } else {
                 refuse_confirmation(app);
             }
@@ -266,10 +298,8 @@ fn submit_modal(app: &mut App) {
                 app.modal.error = Some("enter at least one group".to_string());
                 return;
             }
-            finish(
-                app,
-                crate::services::user_service::add_to_groups(&user, &groups),
-            );
+            let res = crate::services::user_service::add_to_groups(&user, &groups);
+            audit_and_finish(app, "add_user_groups", &user, res);
         }
         ModalKind::SetExpiry(user) => {
             let raw = app.modal.fields[0].value.trim().to_string();
@@ -278,7 +308,8 @@ fn submit_modal(app: &mut App) {
             } else {
                 Some(raw.as_str())
             };
-            finish(app, crate::services::user_service::set_expiry(&user, date));
+            let res = crate::services::user_service::set_expiry(&user, date);
+            audit_and_finish(app, "set_expiry", &user, res);
         }
         ModalKind::CreateGroup => submit_create_group(app),
         ModalKind::RenameGroup(group) => {
@@ -287,32 +318,31 @@ fn submit_modal(app: &mut App) {
                 app.modal.error = Some("new name is required".to_string());
                 return;
             }
-            finish(
-                app,
-                crate::services::group_service::rename_group(&group, &new),
-            );
+            let res = crate::services::group_service::rename_group(&group, &new);
+            audit_and_finish(app, "rename_group", &group, res);
         }
         ModalKind::ConfirmDeleteGroup(group) => {
             if confirmed(app) {
-                finish(app, crate::services::group_service::delete_group(&group));
+                let res = crate::services::group_service::delete_group(&group);
+                audit_and_finish(app, "delete_group", &group, res);
             } else {
                 refuse_confirmation(app);
             }
         }
         ModalKind::GroupAddMembers(group) => match parse_user_list(app) {
-            Some(list) => finish(
-                app,
-                crate::services::group_service::add_members(&group, &list),
-            ),
+            Some(list) => {
+                let res = crate::services::group_service::add_members(&group, &list);
+                audit_and_finish(app, "group_add_members", &group, res);
+            }
             None => {
                 app.modal.error = Some("enter at least one username".to_string());
             }
         },
         ModalKind::GroupRemoveMembers(group) => match parse_user_list(app) {
-            Some(list) => finish(
-                app,
-                crate::services::group_service::remove_members(&group, &list),
-            ),
+            Some(list) => {
+                let res = crate::services::group_service::remove_members(&group, &list);
+                audit_and_finish(app, "group_remove_members", &group, res);
+            }
             None => {
                 app.modal.error = Some("enter at least one username".to_string());
             }
@@ -357,10 +387,8 @@ fn submit_create_group(app: &mut App) {
             }
         }
     };
-    finish(
-        app,
-        crate::services::group_service::create_group(&name, gid),
-    );
+    let res = crate::services::group_service::create_group(&name, gid);
+    audit_and_finish(app, "create_group", &name, res);
 }
 
 /// Checks the confirmation field says YES.
@@ -425,6 +453,27 @@ fn submit_create_user(app: &mut App) {
                 return;
             }
         }
+    }
+    audit_and_finish(app, "create_user", &name, res);
+}
+
+/// Records the operation in the audit log, then shows the result.
+/// Audit failures append to the notification but never replace it.
+fn audit_and_finish(
+    app: &mut App,
+    operation: &'static str,
+    target: &str,
+    res: crate::services::user_service::OpResult,
+) {
+    let entry =
+        crate::system::audit::AuditEntry::from_result(operation, target, res.ok, &res.message);
+    if let Err(err) = crate::system::audit::record(&entry) {
+        app.modal.close();
+        app.notify(res.ok, format!("{} (audit log: {err})", res.message));
+        if res.ok {
+            app.reload();
+        }
+        return;
     }
     finish(app, res);
 }

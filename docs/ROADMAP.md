@@ -96,14 +96,31 @@ a root environment.
 
 ## Phase 5 — Security and Audit
 
-Status: Planned
+Status: Completed (2026-11-09)
 
-- Implement privilege checks.
-- Improve validation.
-- Add audit logging.
-- Add error reporting.
-- Add integration tests.
-- Review destructive operation safeguards.
+- [x] Implement privilege checks — write operations refused up front when
+      not root ("requires root — run `sudo usera`"); no tool spawn, no
+      auto-elevation (SECURITY.md §2).
+- [x] Improve validation — Debian username/group policy, absolute shell
+      paths, GID numeric, expiry shape (Phases 3–4, hardened here).
+- [x] Add audit logging — every executed operation appended to
+      `/var/log/usera/audit.log` (root) or
+      `$XDG_STATE_HOME/usera/audit.log` (unprivileged); format
+      `TIMESTAMP STATUS op=… target=… err="…"`; control chars stripped;
+      no passwords/hashes ever logged (SECURITY.md §7). Best-effort:
+      log I/O failure never replaces the operation result.
+- [x] Add error reporting — raw tool errors mapped to actionable hints
+      (insufficient privileges, already exists, not found/stale list,
+      in-use by processes); unknown errors pass through.
+- [x] Add integration-style tests — audit I/O end-to-end, message
+      mapping, service failure paths against the live system
+      (64 tests total).
+- [x] Review destructive operation safeguards — system-account guard:
+      delete/lock of `root` (UID 0) and any UID < 1000 refused with an
+      explanation before spawning the tool; unknown targets still fall
+      through to the tool.
+
+Acceptance criteria: met.
 
 ## Phase 6 — Release Preparation
 

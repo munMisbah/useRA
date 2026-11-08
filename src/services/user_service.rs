@@ -35,7 +35,8 @@ impl OpResult {
 
 /// Maps a failed `Command` run to an error message with stderr context.
 fn command_error(op: &str, target: &str, err: AppError) -> OpResult {
-    OpResult::failure(format!("{op} {target}: {err}"))
+    let raw = format!("{op} {target}: {err}");
+    OpResult::failure(present(op, target, false, &raw))
 }
 
 fn stderr_text(output: &std::process::Output) -> String {
@@ -48,7 +49,60 @@ fn stderr_text(output: &std::process::Output) -> String {
 }
 
 fn status_error(op: &str, target: &str, output: &std::process::Output) -> OpResult {
-    OpResult::failure(format!("{op} {target} failed: {}", stderr_text(output)))
+    let raw = format!("{op} {target} failed: {}", stderr_text(output));
+    OpResult::failure(present(op, target, false, &raw))
+}
+
+/// Translates raw tool errors into user-facing hints where the cause is
+/// unambiguous. Unknown errors pass through unchanged.
+fn friendly_error(message: &str) -> Option<&'static str> {
+    let lower = message.to_lowercase();
+    if lower.contains("permission denied") || lower.contains("cannot lock") {
+        Some("insufficient privileges — run `sudo usera`")
+    } else if lower.contains("already exists") {
+        Some("already exists on this system")
+    } else if lower.contains("not found") || lower.contains("does not exist") {
+        Some("not found on this system (stale list? press [r] to reload)")
+    } else if lower.contains("currently used by process") || lower.contains("is currently") {
+        Some("account/group is in use by running processes")
+    } else if lower.contains("home directory") && lower.contains("not") {
+        Some("home directory missing or not owned by the user")
+    } else {
+        None
+    }
+}
+
+/// Builds the final message: friendly hint when known, raw detail otherwise.
+pub fn present(op: &str, target: &str, ok: bool, raw: &str) -> String {
+    if ok {
+        return raw.to_string();
+    }
+    match friendly_error(raw) {
+        Some(hint) => format!("{op} {target}: {hint}"),
+        None => format!("{op} {target} failed: {raw}"),
+    }
+}
+
+/// Guards destructive operations against system accounts (UID < 1000)
+/// and the root account. Deleting/locking `root` or service accounts
+/// breaks the system; refuse with a clear reason (SECURITY.md §6).
+pub fn guard_system_account(name: &str, users: &[crate::models::User]) -> Result<(), OpResult> {
+    let user = match users.iter().find(|u| u.name == name) {
+        Some(u) => u,
+        None => return Ok(()), // unknown target: let the tool decide
+    };
+    if user.uid == 0 {
+        return Err(OpResult::failure(
+            "refused: cannot delete or lock the root account".to_string(),
+        ));
+    }
+    if user.uid < 1000 {
+        return Err(OpResult::failure(format!(
+            "refused: '{}' is a system account (UID {}); removing it can break the system",
+            user.name, user.uid
+        )));
+    }
+    Ok(())
 }
 
 /// Creates a user account.
@@ -194,6 +248,73 @@ mod tests {
     use super::*;
 
     #[test]
+    fn present_maps_permission_denied_to_hint() {
+        let msg = present("lock", "root", false, "passwd: Permission denied.");
+        assert!(msg.contains("insufficient privileges"), "got {msg}");
+        assert!(msg.contains("sudo usera"));
+    }
+
+    #[test]
+    fn present_maps_stale_target() {
+        let msg = present(
+            "delete",
+            "ghost",
+            false,
+            "userdel: user ghost does not exist",
+        );
+        assert!(msg.contains("not found"), "got {msg}");
+    }
+
+    #[test]
+    fn present_passes_unknown_errors_through() {
+        let msg = present("op", "x", false, "weird tool failure 42");
+        assert!(msg.contains("weird tool failure 42"));
+    }
+
+    #[test]
+    fn present_keeps_success_messages() {
+        assert_eq!(present("op", "x", true, "all good"), "all good");
+    }
+
+    #[test]
+    fn system_accounts_guarded_from_destructive_ops() {
+        let users = vec![
+            crate::models::User {
+                name: "root".into(),
+                uid: 0,
+                gid: 0,
+                gecos: String::new(),
+                home: "/root".into(),
+                shell: String::new(),
+                supplementary_groups: vec![],
+            },
+            crate::models::User {
+                name: "www-data".into(),
+                uid: 33,
+                gid: 33,
+                gecos: String::new(),
+                home: String::new(),
+                shell: String::new(),
+                supplementary_groups: vec![],
+            },
+            crate::models::User {
+                name: "deploy".into(),
+                uid: 1001,
+                gid: 1001,
+                gecos: String::new(),
+                home: String::new(),
+                shell: String::new(),
+                supplementary_groups: vec![],
+            },
+        ];
+        assert!(guard_system_account("root", &users).is_err());
+        assert!(guard_system_account("www-data", &users).is_err());
+        assert!(guard_system_account("deploy", &users).is_ok());
+        // Unknown targets fall through to the tool.
+        assert!(guard_system_account("ghost", &users).is_ok());
+    }
+
+    #[test]
     fn create_user_rejects_invalid_names_without_running() {
         let res = create_user("Bad Name", None, None, "/bin/bash", true);
         assert!(!res.ok);
@@ -215,10 +336,14 @@ mod tests {
         assert!(res.message.contains("YYYY-MM-DD"));
 
         // Right shape but invalid date passes shape-check and fails at
-        // chage with a status error (unprivileged here).
+        // chage; unprivileged run gets the friendly privilege hint.
         let res2 = set_expiry("root", Some("2026-13-99"));
         assert!(!res2.ok);
-        assert!(res2.message.contains("failed"));
+        assert!(
+            res2.message.contains("insufficient privileges") || res2.message.contains("failed"),
+            "got: {}",
+            res2.message
+        );
     }
 
     #[test]
