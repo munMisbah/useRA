@@ -41,8 +41,8 @@ fn icon_for(key: &str) -> &'static str {
 }
 
 /// Renders key/value fields; values render dimmed when `focused == false`
-/// so the panel visibly responds to focus changes. Each entry gets a
-/// blank spacer row above it so fields breathe.
+/// so the panel visibly responds to focus changes. Fields are compact,
+/// one per row.
 pub fn render(frame: &mut Frame, area: Rect, fields: &[Field], focused: bool) {
     let value_style = if focused {
         crate::ui::theme::base()
@@ -51,16 +51,12 @@ pub fn render(frame: &mut Frame, area: Rect, fields: &[Field], focused: bool) {
     };
     let lines: Vec<Line> = fields
         .iter()
-        .flat_map(|f| {
-            vec![
-                Line::from(""),
-                Line::from(""),
-                Line::from(vec![
-                    Span::styled(format!(" {} ", f.icon), crate::ui::theme::accent()),
-                    Span::raw(format!("{}: ", f.key)),
-                    Span::styled(f.value.clone(), value_style),
-                ]),
-            ]
+        .map(|f| {
+            Line::from(vec![
+                Span::styled(format!(" {} ", f.icon), crate::ui::theme::accent()),
+                Span::raw(format!("{}: ", f.key)),
+                Span::styled(f.value.clone(), value_style),
+            ])
         })
         .collect();
     frame.render_widget(Paragraph::new(lines), area);
