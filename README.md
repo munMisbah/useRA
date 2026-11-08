@@ -91,6 +91,21 @@ The application reads account data live via `getent`, `uname`, and
 `loginctl`; administrative (write) operations arrive in later phases and
 will require root privileges.
 
+### Nerd Font requirement
+
+The interface uses Nerd Font glyphs for icons. Without one, icons render
+as boxes (tofu) — the app still works, but looks degraded. Check your
+setup with:
+
+```sh
+./scripts/check-font.sh
+```
+
+On Debian 12/13 no Nerd Font package exists in the repositories; the
+script prints manual install steps (font file into `~/.local/share/fonts`
+plus `fc-cache`). Debian repos only carry `fonts-powerline` /
+`fonts-jetbrains-mono` (no glyphs), so an upstream install is required.
+
 ---
 
 # Project Philosophy

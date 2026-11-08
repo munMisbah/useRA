@@ -75,6 +75,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         Focus::Details => "DETAILS",
     };
     let mut spans = vec![
+        Span::styled(
+            format!(" {} ", crate::ui::icons::STATUS),
+            crate::ui::theme::accent(),
+        ),
         Span::styled(focus_label, crate::ui::theme::accent()),
         Span::raw("  "),
     ];

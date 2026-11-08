@@ -73,6 +73,10 @@ pub const fn warning() -> Style {
     Style::new().fg(WARNING)
 }
 
+/// Outer margin between terminal edge and panels (Superfile-style
+/// breathing room).
+pub const OUTER_MARGIN: u16 = 1;
+
 #[cfg(test)]
 mod tests {
     use super::*;

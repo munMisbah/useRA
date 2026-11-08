@@ -39,24 +39,26 @@ pub fn render_help(frame: &mut Frame, area: Rect) {
         area,
     );
 
-    let width = 46_u16.min(area.width);
-    let height = (HELP_ROWS.len() as u16 + 6).min(area.height);
+    let width = 50_u16.min(area.width);
+    let height = (HELP_ROWS.len() as u16 + 8).min(area.height);
     let box_area = centered(area, width, height);
 
     let mut lines: Vec<Line> = HELP_ROWS
         .iter()
         .map(|(key, desc)| {
-            let mut line = Line::from(format!("  {key:<12}").set_style(crate::ui::theme::accent()));
+            let mut line = Line::from(format!("  {key:<14}").set_style(crate::ui::theme::accent()));
             line.push_span(desc.to_string());
             line
         })
         .collect();
+    lines.insert(0, Line::from(""));
     lines.push(Line::from(""));
     lines.push(Line::from("  Esc/? to close").set_style(crate::ui::theme::dim()));
 
     let block = Block::new()
+        .border_type(ratatui::widgets::BorderType::Rounded)
         .borders(Borders::ALL)
-        .title("Help".set_style(crate::ui::theme::title()))
+        .title(format!(" {} Help ", crate::ui::icons::HELP).set_style(crate::ui::theme::title()))
         .border_style(crate::ui::theme::border_focused());
 
     frame.render_widget(Clear, box_area);

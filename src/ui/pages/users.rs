@@ -13,6 +13,11 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
         .users
         .iter()
         .map(|u| table::RowData {
+            icon: if u.account_type() == crate::models::AccountType::Regular {
+                crate::ui::icons::USER
+            } else {
+                crate::ui::icons::SHELL
+            },
             name: u.name.clone(),
             attr1: u.uid.to_string(),
             attr2: u.account_type().label().to_string(),
@@ -55,38 +60,14 @@ fn render_details(frame: &mut Frame, app: &App, area: Rect) {
         user.supplementary_groups.join(", ")
     };
     let fields = vec![
-        details::Field {
-            key: "Username",
-            value: user.name.clone(),
-        },
-        details::Field {
-            key: "Full name",
-            value: full_name,
-        },
-        details::Field {
-            key: "UID",
-            value: user.uid.to_string(),
-        },
-        details::Field {
-            key: "GID",
-            value: user.gid.to_string(),
-        },
-        details::Field {
-            key: "Type",
-            value: user.account_type().label().to_string(),
-        },
-        details::Field {
-            key: "Home",
-            value: user.home.clone(),
-        },
-        details::Field {
-            key: "Shell",
-            value: user.shell.clone(),
-        },
-        details::Field {
-            key: "Groups",
-            value: groups,
-        },
+        details::Field::new("Username", user.name.clone()),
+        details::Field::new("Full name", full_name),
+        details::Field::new("UID", user.uid.to_string()),
+        details::Field::new("GID", user.gid.to_string()),
+        details::Field::new("Type", user.account_type().label().to_string()),
+        details::Field::new("Home", user.home.clone()),
+        details::Field::new("Shell", user.shell.clone()),
+        details::Field::new("Groups", groups),
     ];
     details::render(frame, area, &fields, app.focus == Focus::Details);
 }

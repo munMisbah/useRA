@@ -1,4 +1,4 @@
-//! Top header bar: application name, version, hostname, privilege state.
+//! Top header strip: hostname, OS, privilege state with icons.
 
 use crate::app::App;
 use ratatui::layout::Rect;
@@ -11,16 +11,23 @@ pub const APP_NAME: &str = "useRA";
 /// Crate version, taken from Cargo.toml at compile time.
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Renders the one-line header strip: name, version, host, privilege.
+/// Renders the one-line header: logo, version, OS, privilege.
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
-    let host = &app.data.host.hostname;
-    let priv_label = if app.data.is_root { "root" } else { "user" };
+    let os = &app.data.host.os;
+    let (priv_icon, priv_label) = if app.data.is_root {
+        (crate::ui::icons::STATUS, "root")
+    } else {
+        (crate::ui::icons::USER, "user")
+    };
     let text = Line::from(vec![
         Span::styled(
-            format!(" {APP_NAME} v{APP_VERSION} "),
+            format!(" {} v{APP_VERSION} ", crate::ui::icons::LOGO),
             crate::ui::theme::title(),
         ),
-        Span::styled(format!("{host} · {priv_label}"), crate::ui::theme::dim()),
+        Span::styled(os.clone(), crate::ui::theme::dim()),
+        Span::raw("  "),
+        Span::styled(priv_icon, crate::ui::theme::dim()),
+        Span::styled(format!(" {priv_label}"), crate::ui::theme::dim()),
     ]);
     frame.render_widget(Paragraph::new(text), area);
 }

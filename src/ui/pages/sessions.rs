@@ -22,6 +22,11 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
         .sessions
         .iter()
         .map(|s| table::RowData {
+            icon: if s.active {
+                crate::ui::icons::STATUS
+            } else {
+                crate::ui::icons::SHELL
+            },
             name: s.user.clone(),
             attr1: s.id.clone(),
             attr2: if s.active {
@@ -53,22 +58,13 @@ fn render_details(frame: &mut Frame, app: &App, area: Rect) {
         return;
     };
     let fields = vec![
-        details::Field {
-            key: "Session",
-            value: session.id.clone(),
-        },
-        details::Field {
-            key: "User",
-            value: session.user.clone(),
-        },
-        details::Field {
-            key: "Seat",
-            value: session.seat.clone(),
-        },
-        details::Field {
-            key: "State",
-            value: if session.active { "active" } else { "other" }.to_string(),
-        },
+        details::Field::new("Session", session.id.clone()),
+        details::Field::new("User", session.user.clone()),
+        details::Field::new("Seat", session.seat.clone()),
+        details::Field::new(
+            "State",
+            if session.active { "active" } else { "other" }.to_string(),
+        ),
     ];
     details::render(frame, area, &fields, app.focus == Focus::Details);
 }

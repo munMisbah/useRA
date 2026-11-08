@@ -1,11 +1,16 @@
-//! Generic selectable table used by list pages.
+//! Generic selectable table with icons, roomy spacing, and a full-row
+//! selection highlight.
 
 use ratatui::layout::{Constraint, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Row, Table};
 use ratatui::Frame;
 
-/// One row of mock data: name plus two attribute columns.
+/// One row of table data: icon + name plus two attribute columns.
 pub struct RowData {
+    /// Nerd Font glyph for the row kind.
+    pub icon: &'static str,
     /// Primary label (username, group name, ...).
     pub name: String,
     /// First attribute (UID, GID, ...).
@@ -17,19 +22,24 @@ pub struct RowData {
 /// Column headers for the three columns.
 pub const HEADERS: [&str; 3] = ["Name", "ID", "Info"];
 
-/// Renders a three-column table with the selected row highlighted.
+/// Renders a three-column table; the selected row gets the accent bar
+/// style, and every cell is left-padded so text never touches borders.
 pub fn render(frame: &mut Frame, area: Rect, rows: &[RowData], selected: usize) {
-    let header = Row::new(HEADERS)
-        .style(ratatui::style::Style::new().add_modifier(ratatui::style::Modifier::BOLD));
+    let header = Row::new(HEADERS.map(|h| Cell::from(Line::from(format!(" {h}")))))
+        .style(Style::new().add_modifier(Modifier::BOLD));
 
     let body: Vec<Row> = rows
         .iter()
         .enumerate()
         .map(|(i, row)| {
+            let name_line = Line::from(vec![
+                Span::styled(format!("{} ", row.icon), crate::ui::theme::dim()),
+                Span::raw(row.name.clone()),
+            ]);
             let cells = vec![
-                Cell::from(row.name.clone()),
-                Cell::from(row.attr1.clone()),
-                Cell::from(row.attr2.clone()),
+                Cell::from(name_line),
+                Cell::from(format!(" {}", row.attr1)),
+                Cell::from(format!(" {}", row.attr2)),
             ];
             if i == selected {
                 Row::new(cells).style(crate::ui::theme::selected())
@@ -48,7 +58,8 @@ pub fn render(frame: &mut Frame, area: Rect, rows: &[RowData], selected: usize) 
         ],
     )
     .header(header)
-    .column_spacing(1);
+    .column_spacing(2)
+    .row_highlight_style(crate::ui::theme::selected());
 
     frame.render_widget(table, area);
 }

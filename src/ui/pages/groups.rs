@@ -13,6 +13,7 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
         .groups
         .iter()
         .map(|g| table::RowData {
+            icon: crate::ui::icons::GROUPS,
             name: g.name.clone(),
             attr1: g.gid.to_string(),
             attr2: format!("{} members", g.members.len()),
@@ -50,18 +51,9 @@ fn render_details(frame: &mut Frame, app: &App, area: Rect) {
         group.members.join(", ")
     };
     let fields = vec![
-        details::Field {
-            key: "Group",
-            value: group.name.clone(),
-        },
-        details::Field {
-            key: "GID",
-            value: group.gid.to_string(),
-        },
-        details::Field {
-            key: "Members",
-            value: members,
-        },
+        details::Field::new("Group", group.name.clone()),
+        details::Field::new("GID", group.gid.to_string()),
+        details::Field::new("Members", members),
     ];
     details::render(frame, area, &fields, app.focus == Focus::Details);
 }

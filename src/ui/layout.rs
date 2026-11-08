@@ -75,15 +75,23 @@ impl Regions {
 
 /// Renders the complete frame for the current app state.
 pub fn render(frame: &mut Frame, app: &App) {
-    let regions = Regions::compute(frame.area());
+    let margin = crate::ui::theme::OUTER_MARGIN;
+    let frame_area = frame.area();
+    let inner_frame = Rect {
+        x: frame_area.x + margin,
+        y: frame_area.y + margin,
+        width: frame_area.width.saturating_sub(margin * 2),
+        height: frame_area.height.saturating_sub(margin * 2),
+    };
+    frame.render_widget(Block::new().style(crate::ui::theme::base()), frame_area);
 
-    frame.render_widget(Block::new().style(crate::ui::theme::base()), frame.area());
+    let regions = Regions::compute(inner_frame);
 
     crate::ui::components::header::render(frame, app, regions.header);
     let sidebar_inner = crate::ui::components::panel::frame_area(
         frame,
         regions.sidebar,
-        "Navigation",
+        crate::ui::components::header::APP_NAME,
         app.focus == Focus::Sidebar,
     );
     crate::ui::components::sidebar::render(frame, app, sidebar_inner);
@@ -114,8 +122,10 @@ pub fn render(frame: &mut Frame, app: &App) {
 /// Draws a titled border around `area` and returns the inner content area.
 pub fn draw_border(frame: &mut Frame, area: Rect, title: &str, focused: bool) -> Rect {
     let block = Block::new()
+        .border_type(ratatui::widgets::BorderType::Rounded)
         .borders(Borders::ALL)
-        .title(title.set_style(crate::ui::theme::title()))
+        .title(format!(" {title} ").set_style(crate::ui::theme::title()))
+        .padding(ratatui::widgets::Padding::horizontal(1))
         .border_style(if focused {
             crate::ui::theme::border_focused()
         } else {
