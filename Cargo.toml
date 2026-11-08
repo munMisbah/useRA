@@ -1,7 +1,8 @@
 [package]
 name = "usera"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
+rust-version = "1.88"
 description = "useRA - Linux User & Group Manager TUI"
 license = "MIT"
 
@@ -10,5 +11,8 @@ crossterm = "0.29"
 ratatui = { version = "0.30", features = ["crossterm_0_29"], default-features = false }
 
 [profile.release]
-lto = true
+lto = "fat"
 strip = true
+codegen-units = 1
+opt-level = "z"
+panic = "abort"

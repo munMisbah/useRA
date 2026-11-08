@@ -50,6 +50,8 @@ Detailed project documentation is maintained in the `docs/` directory.
 - `FEATURES.md`: Feature specifications.
 - `SECURITY.md`: Security requirements.
 - `ROADMAP.md`: Development milestones.
+- `INSTALL.md`: Installation guide (Debian 12/13).
+- `MANUAL.md`: User manual.
 
 ---
 
@@ -68,17 +70,16 @@ The application will require appropriate root privileges for administrative oper
 
 ## Development Status
 
-**Current phase:** UI foundation and read-only system integration complete.
-
-The initial development priorities are:
+**Current release: 1.0.0** — all roadmap phases complete.
 
 1. ~~Establish the Rust project.~~ (Phase 0)
 2. ~~Implement the Ratatui terminal interface.~~ (Phase 1)
 3. ~~Build the navigation system.~~ (Phase 1)
 4. ~~Implement user listing and inspection.~~ (Phase 2)
 5. ~~Implement user management operations.~~ (Phase 3 — run as root for write ops)
-6. Implement group management. (Phase 4)
-7. Add security and audit features. (Phase 5)
+6. ~~Implement group management.~~ (Phase 4)
+7. ~~Add security and audit features.~~ (Phase 5)
+8. ~~Release preparation.~~ (Phase 6 — see [CHANGELOG.md](CHANGELOG.md))
 
 ### User management shortcuts (Users page, as root)
 

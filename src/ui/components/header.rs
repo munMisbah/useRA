@@ -38,6 +38,6 @@ mod tests {
 
     #[test]
     fn version_matches_cargo_toml() {
-        assert_eq!(APP_VERSION, "0.1.0");
+        assert_eq!(APP_VERSION, "1.0.0");
     }
 }

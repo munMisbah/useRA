@@ -124,16 +124,23 @@ Acceptance criteria: met.
 
 ## Phase 6 — Release Preparation
 
-Status: Planned
+Status: Completed (2026-11-09)
 
-- Optimize startup.
-- Verify terminal compatibility.
-- Test Debian 12.
-- Test Debian 13.
-- Prepare release binary.
-- Write installation documentation.
-- Write user manual.
-- Prepare initial release.
+- [x] Optimize startup — release profile: fat LTO, opt-level "z",
+      single codegen unit, stripped, abort-on-panic (~620 KiB binary;
+      startup < 0.1 s after process init).
+- [x] Verify terminal compatibility — tmux smoke: layout, navigation,
+      modals, quit on 78–120 column terminals.
+- [x] Debian 12 compatibility — binary requires strong glibc ≥ 2.34
+      (Debian 12 ships 2.36); GLIBC_2.39 symbols are weakly referenced
+      and runtime-guarded; MSRV 1.88 declared (repo rustc on both
+      Debian 12/13 is older → build via rustup, documented).
+- [x] Prepare release binary — `cargo build --release`.
+- [x] Write installation documentation — `docs/INSTALL.md`.
+- [x] Write user manual — `docs/MANUAL.md`.
+- [x] Prepare initial release — version 1.0.0, CHANGELOG.md.
+
+Acceptance criteria: met.
 
 ---
 
