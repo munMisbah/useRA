@@ -4,35 +4,35 @@
 
 ## Phase 0 — Project Foundation
 
-Status: Planned
+Status: Completed (2026-11-09)
 
-- Initialize Rust project.
-- Configure Ratatui.
-- Configure Crossterm.
-- Establish module structure.
-- Configure error handling.
-- Configure logging.
-- Add basic tests.
+- [x] Initialize Rust project.
+- [x] Configure Ratatui (0.30, crossterm_0_29 backend).
+- [x] Configure Crossterm (0.29).
+- [x] Establish module structure (`app`, `errors`, `events`, `ui`; `services`/`system` deferred to Phase 2).
+- [x] Configure error handling (`errors::AppError`).
+- [x] Logging: no crate added; in-app feedback first, audit logging lands with Phase 5 as planned.
+- [x] Add basic tests (15 unit tests: state, theme palette, selection math, error display).
 
 ## Phase 1 — UI Foundation
 
-Status: Planned
+Status: Completed (2026-11-09)
 
-- Implement terminal initialization.
-- Implement terminal cleanup.
-- Create dark theme.
-- Create header component.
-- Create sidebar component.
-- Create content panel.
-- Create details panel.
-- Create footer component.
-- Implement keyboard navigation.
-- Implement responsive layout.
-- Implement modal system.
+- [x] Implement terminal initialization (`ratatui::run`, panic-safe restore).
+- [x] Implement terminal cleanup (owned by `ratatui::run` teardown).
+- [x] Create dark theme (`ui/theme.rs`, palette per UI_DESIGN §4).
+- [x] Create header component.
+- [x] Create sidebar component.
+- [x] Create content panel.
+- [x] Create details panel.
+- [x] Create footer component (context-sensitive hints).
+- [x] Implement keyboard navigation (↑↓ pages/selection, ←→/Tab focus, ?, Esc, Q).
+- [x] Implement responsive layout (<80 cols: details hidden; <60: sidebar collapsed).
+- [x] Implement modal system (help modal `[?]` as working proof).
 
-Acceptance criteria:
-
-The application can launch and navigate all main pages without performing system modifications.
+Acceptance criteria: met — the application launches, navigates all main
+pages, and performs no system modifications. List content uses mock data
+(`ui/pages/mock_data.rs`) until Phase 2 replaces the data source.
 
 ## Phase 2 — Read-only System Integration
 
