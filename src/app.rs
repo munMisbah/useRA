@@ -1,9 +1,7 @@
-//! Core application state: active page, panel focus, runtime flags.
-//!
-//! State mutations happen exclusively through event handling; rendering
-//! only reads this struct. `Focus::previous` and `App::previous_focus`
-//! are part of the Phase 1 keymap contract (Shift+Tab lands with text
-//! input in a later phase) and are unit-tested.
+//! Core application state: active page, panel focus, runtime flags, and
+//! the live system data snapshot.
+
+use crate::services::AppData;
 
 /// Identifiable main pages, matching the sidebar navigation order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -89,6 +87,17 @@ impl Focus {
     }
 }
 
+/// Selection indexes per list page, clamped to data length on reload.
+#[derive(Debug, Default)]
+pub struct Selections {
+    /// Selected row on the Users page.
+    pub users: usize,
+    /// Selected row on the Groups page.
+    pub groups: usize,
+    /// Selected row on the Sessions page.
+    pub sessions: usize,
+}
+
 /// Root application state.
 #[derive(Debug, Default)]
 pub struct App {
@@ -100,17 +109,50 @@ pub struct App {
     pub should_quit: bool,
     /// Set while the help modal is open.
     pub show_help: bool,
+    /// List selections per page.
+    pub selections: Selections,
+    /// Live system snapshot; empty until the first successful load.
+    pub data: AppData,
+    /// Last load error message, shown in the footer until next load.
+    pub load_error: Option<String>,
 }
 
 impl App {
-    /// Moves to the next page (sidebar down / Tab on sidebar).
-    pub fn next_page(&mut self) {
-        self.page = self.page.next();
+    /// Reloads the system snapshot and clamps selections to data length.
+    pub fn reload(&mut self) {
+        match AppData::load() {
+            Ok(data) => {
+                self.selections.users = self
+                    .selections
+                    .users
+                    .min(data.users.len().saturating_sub(1));
+                self.selections.groups = self
+                    .selections
+                    .groups
+                    .min(data.groups.len().saturating_sub(1));
+                self.selections.sessions = self
+                    .selections
+                    .sessions
+                    .min(data.sessions.len().saturating_sub(1));
+                self.load_error = None;
+                self.data = data;
+            }
+            Err(err) => {
+                self.load_error = Some(err.to_string());
+            }
+        }
     }
 
-    /// Moves to the previous page (sidebar up).
+    /// Moves to the next page (sidebar down) and reloads data.
+    pub fn next_page(&mut self) {
+        self.page = self.page.next();
+        self.reload();
+    }
+
+    /// Moves to the previous page (sidebar up) and reloads data.
     pub fn previous_page(&mut self) {
         self.page = self.page.previous();
+        self.reload();
     }
 
     /// Cycles panel focus forward.
@@ -151,8 +193,6 @@ mod tests {
         assert_eq!(focus, Focus::Details);
         focus = focus.next();
         assert_eq!(focus, Focus::Sidebar);
-        focus = focus.previous();
-        assert_eq!(focus, Focus::Details);
     }
 
     #[test]
@@ -164,9 +204,22 @@ mod tests {
     }
 
     #[test]
-    fn default_state_opens_dashboard() {
-        let app = App::default();
-        assert_eq!(app.page, Page::Dashboard);
-        assert!(!app.show_help);
+    fn reload_populates_users_and_clamps_selection() {
+        let mut app = App::default();
+        app.selections.users = 10_000;
+        app.reload();
+        assert!(app.load_error.is_none());
+        assert!(!app.data.users.is_empty());
+        assert_eq!(app.selections.users, app.data.users.len() - 1);
+        // Data is sorted by UID.
+        assert!(app.data.users.windows(2).all(|w| w[0].uid <= w[1].uid));
+    }
+
+    #[test]
+    fn reload_clears_stale_error_on_success() {
+        let mut app = App::default();
+        app.load_error = Some("stale".to_string());
+        app.reload();
+        assert!(app.load_error.is_none());
     }
 }

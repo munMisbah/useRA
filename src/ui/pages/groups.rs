@@ -1,22 +1,29 @@
-//! Groups page: mock group table plus details panel.
+//! Groups page: live group table plus selected group's details.
 
 use crate::app::{App, Focus};
 use crate::ui::components::{details, table};
-use crate::ui::pages::mock_data;
 use ratatui::layout::Rect;
-
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 /// Renders the group list and the selected group's details.
 pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
-    let selected = crate::events::state::groups_selected();
+    let rows: Vec<table::RowData> = app
+        .data
+        .groups
+        .iter()
+        .map(|g| table::RowData {
+            name: g.name.clone(),
+            attr1: g.gid.to_string(),
+            attr2: format!("{} members", g.members.len()),
+        })
+        .collect();
     table::render(
         frame,
         content,
-        &mock_groups(),
+        &rows,
         if app.focus == Focus::Content {
-            selected
+            app.selections.groups
         } else {
             usize::MAX
         },
@@ -27,22 +34,9 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
     }
 }
 
-/// Converts mock groups into table rows.
-fn mock_groups() -> Vec<table::RowData> {
-    mock_data::GROUPS
-        .iter()
-        .map(|g| table::RowData {
-            name: g.name.to_string(),
-            attr1: g.gid.to_string(),
-            attr2: format!("{} members", g.members.len()),
-        })
-        .collect()
-}
-
 /// Renders details for the currently selected group.
 fn render_details(frame: &mut Frame, app: &App, area: Rect) {
-    let selected = crate::events::state::groups_selected();
-    let Some(group) = mock_data::GROUPS.get(selected) else {
+    let Some(group) = app.data.groups.get(app.selections.groups) else {
         frame.render_widget(
             Paragraph::new("No group selected").style(crate::ui::theme::dim()),
             area,
@@ -58,7 +52,7 @@ fn render_details(frame: &mut Frame, app: &App, area: Rect) {
     let fields = vec![
         details::Field {
             key: "Group",
-            value: group.name.to_string(),
+            value: group.name.clone(),
         },
         details::Field {
             key: "GID",

@@ -1,53 +1,74 @@
-//! Sessions page: mock login session table.
+//! Sessions page: live login sessions via loginctl.
 
 use crate::app::{App, Focus};
 use crate::ui::components::{details, table};
-use crate::ui::pages::mock_data;
 use ratatui::layout::Rect;
-
+use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-/// Renders the mock session list and details.
+/// Renders the session list and selected session details.
 pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
-    let rows: Vec<table::RowData> = mock_data::SESSIONS
+    if app.data.sessions.is_empty() {
+        frame.render_widget(
+            Paragraph::new(" No login sessions reported (loginctl unavailable or no sessions).")
+                .style(crate::ui::theme::dim()),
+            content,
+        );
+        return;
+    }
+
+    let rows: Vec<table::RowData> = app
+        .data
+        .sessions
         .iter()
         .map(|s| table::RowData {
-            name: s.user.to_string(),
-            attr1: s.id.to_string(),
-            attr2: s.seat.to_string(),
+            name: s.user.clone(),
+            attr1: s.id.clone(),
+            attr2: if s.active {
+                "active".to_string()
+            } else {
+                s.seat.clone()
+            },
         })
         .collect();
-
-    let selected = crate::events::state::sessions_selected();
     table::render(
         frame,
         content,
         &rows,
         if app.focus == Focus::Content {
-            selected
+            app.selections.sessions
         } else {
             usize::MAX
         },
     );
 
     if details_area.width > 0 {
-        let fields = match mock_data::SESSIONS.get(selected) {
-            Some(s) => vec![
-                details::Field {
-                    key: "Session",
-                    value: s.id.to_string(),
-                },
-                details::Field {
-                    key: "User",
-                    value: s.user.to_string(),
-                },
-                details::Field {
-                    key: "Seat",
-                    value: s.seat.to_string(),
-                },
-            ],
-            None => vec![],
-        };
-        details::render(frame, details_area, &fields, app.focus == Focus::Details);
+        render_details(frame, app, details_area);
     }
+}
+
+/// Renders details for the currently selected session.
+fn render_details(frame: &mut Frame, app: &App, area: Rect) {
+    let Some(session) = app.data.sessions.get(app.selections.sessions) else {
+        return;
+    };
+    let fields = vec![
+        details::Field {
+            key: "Session",
+            value: session.id.clone(),
+        },
+        details::Field {
+            key: "User",
+            value: session.user.clone(),
+        },
+        details::Field {
+            key: "Seat",
+            value: session.seat.clone(),
+        },
+        details::Field {
+            key: "State",
+            value: if session.active { "active" } else { "other" }.to_string(),
+        },
+    ];
+    details::render(frame, area, &fields, app.focus == Focus::Details);
 }

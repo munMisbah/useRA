@@ -1,46 +1,42 @@
-//! Users page: mock user table plus details panel.
+//! Users page: live user table plus selected user's details.
 
 use crate::app::{App, Focus};
 use crate::ui::components::{details, table};
-use crate::ui::pages::mock_data;
 use ratatui::layout::Rect;
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 /// Renders the user list and the selected user's details.
 pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
-    if app.focus == Focus::Content {
-        table::render(
-            frame,
-            content,
-            &mock_users(),
-            crate::events::state::users_selected(),
-        );
-    } else {
-        table::render(frame, content, &mock_users(), usize::MAX);
-    }
+    let rows: Vec<table::RowData> = app
+        .data
+        .users
+        .iter()
+        .map(|u| table::RowData {
+            name: u.name.clone(),
+            attr1: u.uid.to_string(),
+            attr2: u.account_type().label().to_string(),
+        })
+        .collect();
+    table::render(
+        frame,
+        content,
+        &rows,
+        if app.focus == Focus::Content {
+            app.selections.users
+        } else {
+            usize::MAX
+        },
+    );
 
     if details_area.width > 0 {
         render_details(frame, app, details_area);
     }
 }
 
-/// Converts mock users into table rows.
-fn mock_users() -> Vec<table::RowData> {
-    mock_data::USERS
-        .iter()
-        .map(|u| table::RowData {
-            name: u.name.to_string(),
-            attr1: u.uid.to_string(),
-            attr2: u.kind.to_string(),
-        })
-        .collect()
-}
-
 /// Renders details for the currently selected user.
 fn render_details(frame: &mut Frame, app: &App, area: Rect) {
-    let selected = crate::events::state::users_selected();
-    let Some(user) = mock_data::USERS.get(selected) else {
+    let Some(user) = app.data.users.get(app.selections.users) else {
         frame.render_widget(
             Paragraph::new("No user selected").style(crate::ui::theme::dim()),
             area,
@@ -48,11 +44,24 @@ fn render_details(frame: &mut Frame, app: &App, area: Rect) {
         return;
     };
 
-    let groups = mock_data::groups_of(user.name).join(", ");
+    let full_name = if user.gecos.is_empty() {
+        "(none)".to_string()
+    } else {
+        user.gecos.clone()
+    };
+    let groups = if user.supplementary_groups.is_empty() {
+        "(none)".to_string()
+    } else {
+        user.supplementary_groups.join(", ")
+    };
     let fields = vec![
         details::Field {
             key: "Username",
-            value: user.name.to_string(),
+            value: user.name.clone(),
+        },
+        details::Field {
+            key: "Full name",
+            value: full_name,
         },
         details::Field {
             key: "UID",
@@ -64,15 +73,15 @@ fn render_details(frame: &mut Frame, app: &App, area: Rect) {
         },
         details::Field {
             key: "Type",
-            value: user.kind.to_string(),
+            value: user.account_type().label().to_string(),
         },
         details::Field {
             key: "Home",
-            value: user.home.to_string(),
+            value: user.home.clone(),
         },
         details::Field {
             key: "Shell",
-            value: user.shell.to_string(),
+            value: user.shell.clone(),
         },
         details::Field {
             key: "Groups",

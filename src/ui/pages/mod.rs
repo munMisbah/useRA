@@ -2,7 +2,6 @@
 
 pub mod dashboard;
 pub mod groups;
-pub mod mock_data;
 pub mod sessions;
 pub mod settings;
 pub mod users;

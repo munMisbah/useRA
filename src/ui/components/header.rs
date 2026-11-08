@@ -1,8 +1,8 @@
-//! Top header bar: application name, version, and static system slot.
+//! Top header bar: application name, version, hostname, privilege state.
 
 use crate::app::App;
 use ratatui::layout::Rect;
-use ratatui::style::Stylize;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
@@ -11,15 +11,18 @@ pub const APP_NAME: &str = "useRA";
 /// Crate version, taken from Cargo.toml at compile time.
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Renders the one-line header strip.
-pub fn render(frame: &mut Frame, _app: &App, area: Rect) {
-    let text = format!(
-        " {} v{} {}",
-        APP_NAME,
-        APP_VERSION,
-        "Debian System Manager".dim()
-    );
-    frame.render_widget(Paragraph::new(text).style(crate::ui::theme::title()), area);
+/// Renders the one-line header strip: name, version, host, privilege.
+pub fn render(frame: &mut Frame, app: &App, area: Rect) {
+    let host = &app.data.host.hostname;
+    let priv_label = if app.data.is_root { "root" } else { "user" };
+    let text = Line::from(vec![
+        Span::styled(
+            format!(" {APP_NAME} v{APP_VERSION} "),
+            crate::ui::theme::title(),
+        ),
+        Span::styled(format!("{host} · {priv_label}"), crate::ui::theme::dim()),
+    ]);
+    frame.render_widget(Paragraph::new(text), area);
 }
 
 #[cfg(test)]

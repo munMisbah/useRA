@@ -36,19 +36,19 @@ pages, and performs no system modifications. List content uses mock data
 
 ## Phase 2 — Read-only System Integration
 
-Status: Planned
+Status: Completed (2026-11-09)
 
-- Detect Debian version.
-- Read hostname and kernel information.
-- Read users through system account databases.
-- Read groups through system account databases.
-- Inspect user details.
-- Inspect group details.
-- Display login sessions.
+- [x] Detect Debian version (PRETTY_NAME from /etc/os-release).
+- [x] Read hostname and kernel information (`uname`).
+- [x] Read users through system account databases (`getent passwd`; shadow never read).
+- [x] Read groups through system account databases (`getent group`).
+- [x] Inspect user details (incl. supplementary group merge from group db).
+- [x] Inspect group details.
+- [x] Display login sessions (`loginctl`, graceful without logind).
 
-Acceptance criteria:
-
-Users and groups can be inspected without modifying system accounts.
+Acceptance criteria: met — users and groups are inspected without modifying
+system accounts. Reload happens on page change and `[r]`; privilege state
+(root/user) is shown in the header and dashboard.
 
 ## Phase 3 — User Management
 

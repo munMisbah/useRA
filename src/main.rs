@@ -5,6 +5,9 @@
 mod app;
 mod errors;
 mod events;
+mod models;
+mod services;
+mod system;
 mod ui;
 
 use app::App;
@@ -19,6 +22,7 @@ fn main() -> io::Result<()> {
 /// Main loop: draw a frame, then block for the next key event.
 fn run_loop(terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
     let mut app = App::default();
+    app.reload();
     while !app.should_quit {
         terminal.draw(|frame| ui::layout::render(frame, &app))?;
         if let Some(key) = next_key()? {

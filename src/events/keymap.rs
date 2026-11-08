@@ -1,4 +1,4 @@
-//! Key → action mapping for Phase 1 navigation.
+//! Key → action mapping for Phase 2 navigation.
 //!
 //! Actions never touch the system; they only mutate `App` state.
 //! Write-operation keys (A/E/D) are deliberately unbound until their
@@ -25,6 +25,9 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => app.quit(),
         (KeyCode::Char('?'), _) => app.show_help = true,
+        (KeyCode::Char('r'), KeyModifiers::NONE) | (KeyCode::Char('R'), KeyModifiers::NONE) => {
+            app.reload();
+        }
         (KeyCode::Tab, _) => app.next_focus(),
         (KeyCode::Esc, _) => {}
 
@@ -53,34 +56,22 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 }
 
 /// Moves the content selection on list pages, clamping to row counts.
-fn move_content_selection(app: &App, delta: isize) {
+fn move_content_selection(app: &mut App, delta: isize) {
     match app.page {
         Page::Users => {
-            let len = crate::ui::pages::mock_data::USERS.len();
-            let next = crate::ui::components::table::move_selection(
-                crate::events::state::users_selected(),
-                len,
-                delta,
-            );
-            crate::events::state::set_users_selected(next);
+            let len = app.data.users.len();
+            app.selections.users =
+                crate::ui::components::table::move_selection(app.selections.users, len, delta);
         }
         Page::Groups => {
-            let len = crate::ui::pages::mock_data::GROUPS.len();
-            let next = crate::ui::components::table::move_selection(
-                crate::events::state::groups_selected(),
-                len,
-                delta,
-            );
-            crate::events::state::set_groups_selected(next);
+            let len = app.data.groups.len();
+            app.selections.groups =
+                crate::ui::components::table::move_selection(app.selections.groups, len, delta);
         }
         Page::Sessions => {
-            let len = crate::ui::pages::mock_data::SESSIONS.len();
-            let next = crate::ui::components::table::move_selection(
-                crate::events::state::sessions_selected(),
-                len,
-                delta,
-            );
-            crate::events::state::set_sessions_selected(next);
+            let len = app.data.sessions.len();
+            app.selections.sessions =
+                crate::ui::components::table::move_selection(app.selections.sessions, len, delta);
         }
         Page::Dashboard | Page::Settings => {}
     }

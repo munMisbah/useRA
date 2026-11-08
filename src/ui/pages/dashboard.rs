@@ -1,33 +1,42 @@
-//! Dashboard page: static placeholders until Phase 2 system reads.
+//! Dashboard page: live host facts and account counts.
 
 use crate::app::{App, Focus};
 use crate::ui::components::details;
-use crate::ui::pages::mock_data;
 use ratatui::layout::Rect;
 use ratatui::style::Styled;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-/// Renders dashboard summary cards as text lines.
+/// Renders dashboard summary from the live system snapshot.
 pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
+    let data = &app.data;
     let lines = vec![
         Line::from(" System Overview").style(crate::ui::theme::title()),
         Line::from(""),
+        Line::from(format!("  Hostname     {}", data.host.hostname)),
+        Line::from(format!("  OS           {}", data.host.os)),
         Line::from(format!(
-            "  Hostname     {}",
-            "(detected in phase 2)".set_style(crate::ui::theme::dim())
-        )),
-        Line::from(format!(
-            "  OS           {}",
-            "Debian GNU/Linux".set_style(crate::ui::theme::dim())
+            "  Kernel       {}",
+            data.host.kernel.clone().set_style(crate::ui::theme::dim())
         )),
         Line::from(""),
-        Line::from(format!("  Users        {}", mock_data::USERS.len())),
-        Line::from(format!("  Groups       {}", mock_data::GROUPS.len())),
-        Line::from(format!("  Sessions     {}", mock_data::SESSIONS.len())),
+        Line::from(format!(
+            "  Users        {} ({} regular)",
+            data.users.len(),
+            data.regular_user_count()
+        )),
+        Line::from(format!("  Groups       {}", data.groups.len())),
+        Line::from(format!("  Sessions     {}", data.sessions.len())),
         Line::from(""),
-        Line::from("  Real system data arrives in phase 2.".set_style(crate::ui::theme::dim())),
+        Line::from(
+            "  Privileges   ".to_string()
+                + if data.is_root {
+                    "root (administrative)"
+                } else {
+                    "unprivileged (read-only)"
+                },
+        ),
     ];
     frame.render_widget(Paragraph::new(lines), content);
 

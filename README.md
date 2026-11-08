@@ -66,19 +66,30 @@ The application will require appropriate root privileges for administrative oper
 
 ---
 
-# Development Status
+## Development Status
 
-**Current phase:** Planning and UI foundation.
+**Current phase:** UI foundation and read-only system integration complete.
 
 The initial development priorities are:
 
-1. Establish the Rust project.
-2. Implement the Ratatui terminal interface.
-3. Build the navigation system.
-4. Implement user listing and inspection.
-5. Implement user management operations.
-6. Implement group management.
-7. Add security and audit features.
+1. ~~Establish the Rust project.~~ (Phase 0)
+2. ~~Implement the Ratatui terminal interface.~~ (Phase 1)
+3. ~~Build the navigation system.~~ (Phase 1)
+4. ~~Implement user listing and inspection.~~ (Phase 2)
+5. Implement user management operations. (Phase 3)
+6. Implement group management. (Phase 4)
+7. Add security and audit features. (Phase 5)
+
+### Building and running
+
+```sh
+cargo build --release
+./target/release/usera
+```
+
+The application reads account data live via `getent`, `uname`, and
+`loginctl`; administrative (write) operations arrive in later phases and
+will require root privileges.
 
 ---
 

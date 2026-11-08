@@ -31,7 +31,9 @@ fn hints(app: &App) -> Vec<Hint> {
             });
         }
         Focus::Content => {
-            if matches!(app.page, Page::Users | Page::Groups) {
+            if matches!(app.page, Page::Users | Page::Groups | Page::Sessions)
+                && !list_is_empty(app)
+            {
                 hints.push(Hint {
                     key: "↑↓",
                     label: "Select",
@@ -40,6 +42,10 @@ fn hints(app: &App) -> Vec<Hint> {
         }
         Focus::Details => {}
     }
+    hints.push(Hint {
+        key: "r",
+        label: "Reload",
+    });
     hints.push(Hint {
         key: "?",
         label: "Help",
@@ -51,7 +57,17 @@ fn hints(app: &App) -> Vec<Hint> {
     hints
 }
 
-/// Renders the one-line footer: focus indicator plus shortcuts.
+/// Whether the active page's list has no rows.
+fn list_is_empty(app: &App) -> bool {
+    match app.page {
+        Page::Users => app.data.users.is_empty(),
+        Page::Groups => app.data.groups.is_empty(),
+        Page::Sessions => app.data.sessions.is_empty(),
+        Page::Dashboard | Page::Settings => true,
+    }
+}
+
+/// Renders the one-line footer: focus indicator, load error, shortcuts.
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let focus_label = match app.focus {
         Focus::Sidebar => "NAV",
@@ -62,6 +78,11 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(focus_label, crate::ui::theme::accent()),
         Span::raw("  "),
     ];
+    if let Some(err) = &app.load_error {
+        spans.push(Span::styled("ERR ", crate::ui::theme::error()));
+        spans.push(Span::styled(err.clone(), crate::ui::theme::warning()));
+        spans.push(Span::raw(" · "));
+    }
     for (i, hint) in hints(app).into_iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw(" · "));
