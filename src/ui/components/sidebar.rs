@@ -29,8 +29,6 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             crate::ui::theme::dim()
         };
         lines.push(Line::from(text).set_style(style));
-        // Breathing room between nav items.
-        lines.push(Line::from(""));
     }
 
     // Host info pinned at the bottom, Superfile "Disks" style.

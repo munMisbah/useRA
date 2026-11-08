@@ -12,7 +12,7 @@ use ratatui::widgets::{Block, Borders};
 use ratatui::Frame;
 
 /// Sidebar width in normal mode.
-const SIDEBAR_WIDTH: u16 = 16;
+const SIDEBAR_WIDTH: u16 = 20;
 /// Sidebar width in collapsed mode (terminal too narrow).
 const SIDEBAR_WIDTH_COLLAPSED: u16 = 12;
 /// Below this width the details panel disappears.
@@ -54,7 +54,7 @@ impl Regions {
         let horizontal = Layout::horizontal([
             Constraint::Length(sidebar_width),
             Constraint::Min(20),
-            Constraint::Percentage(if show_details { 20 } else { 0 }),
+            Constraint::Percentage(if show_details { 25 } else { 0 }),
         ])
         .split(vertical[1]);
 
