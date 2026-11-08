@@ -308,7 +308,7 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
 
     // Size: message line (if any) + fields + hints, bordered.
     let msg_rows = if modal.error.is_some() { 2 } else { 0 };
-    let height = (modal.fields.len() as u16 * 2 + msg_rows + 5).min(area.height.saturating_sub(2));
+    let height = (modal.fields.len() as u16 + msg_rows + 3).min(area.height.saturating_sub(2));
     let width = 54_u16.min(area.width.saturating_sub(2));
 
     let mut lines: Vec<Line> = Vec::new();
@@ -353,14 +353,13 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
                 Span::styled(field.value.clone(), value_style),
             ]));
         }
-        lines.push(Line::from(""));
     }
     lines.push(
         Line::from("  Enter submit · Tab next field · Esc cancel")
             .set_style(crate::ui::theme::dim()),
     );
 
-    let box_area = super::modal::centered(area, width, height + 2);
+    let box_area = super::modal::centered(area, width, height);
     let block = Block::new()
         .border_type(ratatui::widgets::BorderType::Rounded)
         .borders(Borders::ALL)
