@@ -65,6 +65,28 @@ fn hints(app: &App) -> Vec<Hint> {
                     label: "Delete",
                 });
             }
+            if app.page == Page::Groups && app.data.is_root {
+                hints.push(Hint {
+                    key: "A",
+                    label: "Add",
+                });
+                hints.push(Hint {
+                    key: "E",
+                    label: "Rename",
+                });
+                hints.push(Hint {
+                    key: "G",
+                    label: "+Members",
+                });
+                hints.push(Hint {
+                    key: "R",
+                    label: "-Members",
+                });
+                hints.push(Hint {
+                    key: "D",
+                    label: "Delete",
+                });
+            }
         }
         Focus::Details => {}
     }

@@ -78,17 +78,21 @@ root environment; behavior verified up to the spawn+status boundary.
 
 ## Phase 4 — Group Management
 
-Status: Planned
+Status: Completed (2026-11-09)
 
-- Create group.
-- Modify group.
-- Delete group.
-- Add group member.
-- Remove group member.
+- [x] Create group (`groupadd`, optional GID).
+- [x] Modify group — rename (`groupmod -n`).
+- [x] Delete group (`groupdel`, explicit YES confirmation; accounts untouched).
+- [x] Add group member (`gpasswd -a`, comma-separated list, per-user
+      error reporting with partial-failure message).
+- [x] Remove group member (`gpasswd -d`, prefilled with current members).
+- [x] Membership information refreshes after every successful operation
+      (auto-reload, same path as Phase 3).
 
-Acceptance criteria:
-
-Group operations work and membership information refreshes correctly.
+Acceptance criteria: met on the Debian 13.6 dev box. All operations spawn
+the correct binary with separate args; unprivileged runs fail with the
+tool's Permission denied surfaced in the footer. Root-path smoke pending
+a root environment.
 
 ## Phase 5 — Security and Audit
 

@@ -92,6 +92,16 @@ The initial development priorities are:
 | X | Set/clear account expiry (YYYY-MM-DD) |
 | D | Delete user (confirm with YES; home is kept) |
 
+### Group management shortcuts (Groups page, as root)
+
+| Key | Action |
+| --- | --- |
+| A | Create group (name + optional GID) |
+| E | Rename selected group |
+| G | Add members (comma-separated usernames) |
+| R | Remove members (prefilled with current members) |
+| D | Delete group (confirm with YES; user accounts untouched) |
+
 ### Building and running
 
 ```sh

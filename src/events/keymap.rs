@@ -27,13 +27,16 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
     }
 
     match (key.code, key.modifiers) {
-        // Global keys.
+        // Global keys. `r` reloads except on the Groups page, where it
+        // removes members when content is focused.
         (KeyCode::Char('q'), KeyModifiers::NONE) | (KeyCode::Char('Q'), KeyModifiers::NONE) => {
             app.quit();
         }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => app.quit(),
         (KeyCode::Char('?'), _) => app.show_help = true,
-        (KeyCode::Char('r'), KeyModifiers::NONE) | (KeyCode::Char('R'), KeyModifiers::NONE) => {
+        (KeyCode::Char('r' | 'R'), KeyModifiers::NONE)
+            if !(app.page == Page::Groups && app.focus == Focus::Content) =>
+        {
             app.reload();
         }
         (KeyCode::Tab, _) => app.next_focus(),
@@ -50,6 +53,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             },
             Focus::Content => {
                 let user_page = app.page == Page::Users;
+                let group_page = app.page == Page::Groups;
                 match key.code {
                     KeyCode::Down => move_content_selection(app, 1),
                     KeyCode::Up => move_content_selection(app, -1),
@@ -63,6 +67,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     KeyCode::Char('u' | 'U') if user_page => open_unlock_confirm(app),
                     KeyCode::Char('g' | 'G') if user_page => open_add_groups(app),
                     KeyCode::Char('x' | 'X') if user_page => open_set_expiry(app),
+                    // Operation keys on the Groups page.
+                    KeyCode::Char('a' | 'A') if group_page => open_create_group(app),
+                    KeyCode::Char('e' | 'E') if group_page => open_rename_group(app),
+                    KeyCode::Char('d' | 'D') if group_page => open_delete_group_confirm(app),
+                    KeyCode::Char('g' | 'G') if group_page => open_group_add_members(app),
+                    KeyCode::Char('r' | 'R') if group_page => open_group_remove_members(app),
                     _ => {}
                 }
             }
@@ -159,6 +169,52 @@ fn open_set_expiry(app: &mut App) {
     }
 }
 
+// --- Group modal openers (Phase 4) ------------------------------------
+
+fn open_create_group(app: &mut App) {
+    app.modal = form_modal::Modal::create_group();
+}
+
+fn open_rename_group(app: &mut App) {
+    if let Some(group) = app.selected_group() {
+        app.modal = form_modal::Modal::rename_group(group.name.clone());
+    } else {
+        app.notify(false, "no group selected");
+    }
+}
+
+fn open_delete_group_confirm(app: &mut App) {
+    if let Some(group) = app.selected_group() {
+        let name = group.name.clone();
+        app.modal = form_modal::Modal::confirm(
+            ModalKind::ConfirmDeleteGroup(name.clone()),
+            &format!(
+                "Delete group '{name}'? Members lose this group; user accounts \
+                 are untouched. Type YES to confirm."
+            ),
+        );
+    } else {
+        app.notify(false, "no group selected");
+    }
+}
+
+fn open_group_add_members(app: &mut App) {
+    if let Some(group) = app.selected_group() {
+        app.modal = form_modal::Modal::group_add_members(group.name.clone());
+    } else {
+        app.notify(false, "no group selected");
+    }
+}
+
+fn open_group_remove_members(app: &mut App) {
+    if let Some(group) = app.selected_group() {
+        let members = group.members.clone();
+        app.modal = form_modal::Modal::group_remove_members(group.name.clone(), &members);
+    } else {
+        app.notify(false, "no group selected");
+    }
+}
+
 // --- Modal submission -------------------------------------------------
 
 /// Executes the pending operation described by the modal.
@@ -224,7 +280,87 @@ fn submit_modal(app: &mut App) {
             };
             finish(app, crate::services::user_service::set_expiry(&user, date));
         }
+        ModalKind::CreateGroup => submit_create_group(app),
+        ModalKind::RenameGroup(group) => {
+            let new = app.modal.fields[0].value.trim().to_string();
+            if new.is_empty() {
+                app.modal.error = Some("new name is required".to_string());
+                return;
+            }
+            finish(
+                app,
+                crate::services::group_service::rename_group(&group, &new),
+            );
+        }
+        ModalKind::ConfirmDeleteGroup(group) => {
+            if confirmed(app) {
+                finish(app, crate::services::group_service::delete_group(&group));
+            } else {
+                refuse_confirmation(app);
+            }
+        }
+        ModalKind::GroupAddMembers(group) => match parse_user_list(app) {
+            Some(list) => finish(
+                app,
+                crate::services::group_service::add_members(&group, &list),
+            ),
+            None => {
+                app.modal.error = Some("enter at least one username".to_string());
+            }
+        },
+        ModalKind::GroupRemoveMembers(group) => match parse_user_list(app) {
+            Some(list) => finish(
+                app,
+                crate::services::group_service::remove_members(&group, &list),
+            ),
+            None => {
+                app.modal.error = Some("enter at least one username".to_string());
+            }
+        },
     }
+}
+
+/// Parses the comma-separated user list from the first form field.
+fn parse_user_list(app: &App) -> Option<Vec<String>> {
+    let raw = app.modal.fields[0].value.trim().to_string();
+    if raw.is_empty() {
+        return None;
+    }
+    let list: Vec<String> = raw
+        .split(',')
+        .map(|u| u.trim().to_string())
+        .filter(|u| !u.is_empty())
+        .collect();
+    if list.is_empty() {
+        None
+    } else {
+        Some(list)
+    }
+}
+
+/// Create-group submit: name required, GID optional numeric.
+fn submit_create_group(app: &mut App) {
+    let name = app.modal.fields[0].value.trim().to_string();
+    let gid_raw = app.modal.fields[1].value.trim().to_string();
+    if name.is_empty() {
+        app.modal.error = Some("group name is required".to_string());
+        return;
+    }
+    let gid = if gid_raw.is_empty() {
+        None
+    } else {
+        match gid_raw.parse::<u32>() {
+            Ok(id) => Some(id),
+            Err(_) => {
+                app.modal.error = Some("GID must be a number".to_string());
+                return;
+            }
+        }
+    };
+    finish(
+        app,
+        crate::services::group_service::create_group(&name, gid),
+    );
 }
 
 /// Checks the confirmation field says YES.

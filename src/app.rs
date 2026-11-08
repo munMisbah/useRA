@@ -184,6 +184,11 @@ impl App {
     pub fn selected_user(&self) -> Option<&crate::models::User> {
         self.data.users.get(self.selections.users)
     }
+
+    /// Selected group on the Groups page, if any.
+    pub fn selected_group(&self) -> Option<&crate::models::Group> {
+        self.data.groups.get(self.selections.groups)
+    }
 }
 
 #[cfg(test)]

@@ -21,6 +21,16 @@ pub enum ModalKind {
     AddGroups(String),
     /// Set expiry form.
     SetExpiry(String),
+    /// Create-group form.
+    CreateGroup,
+    /// Rename-group form (value = current name).
+    RenameGroup(String),
+    /// Delete-group confirmation.
+    ConfirmDeleteGroup(String),
+    /// Add users to a group (value = group name).
+    GroupAddMembers(String),
+    /// Remove users from a group (value = group name).
+    GroupRemoveMembers(String),
 }
 
 /// One labeled text input with its current buffer.
@@ -110,6 +120,48 @@ impl Modal {
         Modal {
             kind: Some(ModalKind::SetExpiry(user)),
             fields: vec![Field::new("Expiry YYYY-MM-DD (empty=clear)")],
+            ..Modal::default()
+        }
+    }
+
+    /// Opens a create-group form (name + optional GID).
+    pub fn create_group() -> Self {
+        Modal {
+            kind: Some(ModalKind::CreateGroup),
+            fields: vec![Field::new("Group name"), Field::new("GID (optional)")],
+            ..Modal::default()
+        }
+    }
+
+    /// Opens a rename-group form prefilled with the current name.
+    pub fn rename_group(current: String) -> Self {
+        Modal {
+            kind: Some(ModalKind::RenameGroup(current.clone())),
+            fields: vec![Field {
+                label: "New name",
+                value: current,
+            }],
+            ..Modal::default()
+        }
+    }
+
+    /// Opens the add-members form (comma-separated usernames).
+    pub fn group_add_members(group: String) -> Self {
+        Modal {
+            kind: Some(ModalKind::GroupAddMembers(group)),
+            fields: vec![Field::new("Users to add (comma-sep)")],
+            ..Modal::default()
+        }
+    }
+
+    /// Opens the remove-members form prefilled with current members.
+    pub fn group_remove_members(group: String, members: &[String]) -> Self {
+        Modal {
+            kind: Some(ModalKind::GroupRemoveMembers(group)),
+            fields: vec![Field {
+                label: "Users to remove (comma-sep)",
+                value: members.join(", "),
+            }],
             ..Modal::default()
         }
     }
@@ -242,6 +294,15 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
         ),
         Some(ModalKind::AddGroups(user)) => (&format!("Add Groups — {user}")[..], false),
         Some(ModalKind::SetExpiry(user)) => (&format!("Set Expiry — {user}")[..], false),
+        Some(ModalKind::CreateGroup) => ("Create Group", false),
+        Some(ModalKind::RenameGroup(group)) => (&format!("Rename Group — {group}")[..], false),
+        Some(ModalKind::ConfirmDeleteGroup(group)) => {
+            (&format!("Delete Group — {group}")[..], true)
+        }
+        Some(ModalKind::GroupAddMembers(group)) => (&format!("Add Members — {group}")[..], false),
+        Some(ModalKind::GroupRemoveMembers(group)) => {
+            (&format!("Remove Members — {group}")[..], false)
+        }
         None => return,
     };
 
