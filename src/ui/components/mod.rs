@@ -1,6 +1,7 @@
 //! Reusable UI components.
 
 pub mod details;
+pub mod form_modal;
 pub mod header;
 pub mod modal;
 pub mod panel;

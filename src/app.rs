@@ -109,6 +109,10 @@ pub struct App {
     pub should_quit: bool,
     /// Set while the help modal is open.
     pub show_help: bool,
+    /// Active form/confirm modal (Phase 3 operations).
+    pub modal: crate::ui::components::form_modal::Modal,
+    /// Transient operation feedback shown in the footer.
+    pub notification: Option<(bool, String)>,
     /// List selections per page.
     pub selections: Selections,
     /// Live system snapshot; empty until the first successful load.
@@ -169,6 +173,16 @@ impl App {
     /// Requests application exit.
     pub fn quit(&mut self) {
         self.should_quit = true;
+    }
+
+    /// Records an operation result as a footer notification.
+    pub fn notify(&mut self, ok: bool, message: impl Into<String>) {
+        self.notification = Some((ok, message.into()));
+    }
+
+    /// Selected user on the Users page, if any.
+    pub fn selected_user(&self) -> Option<&crate::models::User> {
+        self.data.users.get(self.selections.users)
     }
 }
 

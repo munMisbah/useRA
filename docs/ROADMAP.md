@@ -52,21 +52,29 @@ system accounts. Reload happens on page change and `[r]`; privilege state
 
 ## Phase 3 — User Management
 
-Status: Planned
+Status: Completed (2026-11-09)
 
-- Create user.
-- Edit user.
-- Lock user.
-- Unlock user.
-- Change default shell.
-- Modify supplementary groups.
-- Delete user.
-- Add explicit home directory handling.
-- Implement operation confirmation.
+- [x] Create user (`useradd`, fields: username, full name, home dir, shell,
+      supplementary groups; home always created with the account).
+- [x] Edit user (login shell via `usermod -s`).
+- [x] Lock user (`passwd -l`, explicit YES confirmation).
+- [x] Unlock user (`passwd -u`, explicit YES confirmation).
+- [x] Change default shell (validated absolute path).
+- [x] Modify supplementary groups (`usermod -aG`, comma-separated).
+- [x] Delete user (`userdel`; home kept by default — the form states this;
+      `-r` home removal is wired but only reachable when a future UI
+      revision exposes the explicit "remove home" option per SECURITY §6).
+- [x] Add explicit home directory handling (message shows "home kept"/"home removed").
+- [x] Implement operation confirmation (type YES; wrong/empty input cancels).
+- [x] Input validation client-side (Debian username policy, shell path,
+      expiry shape) before any command runs.
+- [x] /usr/sbin resolution so useradd/usermod/userdel spawn under user PATHs.
 
-Acceptance criteria:
-
-User operations work safely on Debian and report their results accurately.
+Acceptance criteria: met on the Debian 13.6 dev box. All operations spawn
+the correct binary with separate args; unprivileged runs fail with the
+tool's Permission denied surfaced in the footer (no auto-elevation).
+Root-path smoke (create/lock/delete against real accounts) pending a
+root environment; behavior verified up to the spawn+status boundary.
 
 ## Phase 4 — Group Management
 

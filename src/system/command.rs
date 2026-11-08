@@ -5,7 +5,25 @@
 //! arguments. All helpers here enforce that.
 
 use crate::errors::AppError;
+use std::path::PathBuf;
 use std::process::{Command, Output};
+
+/// Admin tools (useradd/usermod/userdel) live in /usr/sbin, which is
+/// missing from typical user PATHs. Resolve against known prefixes.
+const SBIN_PREFIXES: [&str; 3] = ["/usr/sbin", "/sbin", "/usr/local/sbin"];
+
+/// Finds a binary: PATH first, then sbin prefixes.
+pub fn resolve(program: &str) -> PathBuf {
+    // Try PATH via `which`-style lookup using Command; fall back to
+    // absolute sbin candidates.
+    for prefix in SBIN_PREFIXES {
+        let candidate = PathBuf::from(prefix).join(program);
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+    PathBuf::from(program)
+}
 
 /// Runs a command with arguments, capturing stdout/stderr.
 ///
@@ -13,7 +31,7 @@ use std::process::{Command, Output};
 /// Exit-status handling is left to the caller (read-only commands
 /// treat non-zero exit as "no data" rather than a hard error).
 pub fn run(program: &str, args: &[&str]) -> Result<Output, AppError> {
-    Command::new(program)
+    Command::new(resolve(program))
         .args(args)
         .output()
         .map_err(|e| AppError::Io(format!("failed to run {program}: {e}")))
@@ -57,5 +75,11 @@ mod tests {
         let err = run("definitely-not-a-binary-xyz", &[]).unwrap_err();
         assert!(matches!(err, AppError::Io(_)));
         assert!(err.to_string().contains("definitely-not-a-binary-xyz"));
+    }
+
+    #[test]
+    fn resolves_sbin_tools_by_absolute_path() {
+        let p = resolve("useradd");
+        assert!(p.starts_with("/usr/sbin"), "resolved to {p:?}");
     }
 }

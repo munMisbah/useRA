@@ -115,7 +115,10 @@ pub fn render(frame: &mut Frame, app: &App) {
     crate::ui::components::statusbar::render(frame, app, regions.footer);
 
     if app.show_help {
-        crate::ui::components::modal::render_help(frame, frame.area());
+        crate::ui::components::modal::render_help(frame, inner_frame);
+    }
+    if app.modal.is_open() {
+        crate::ui::components::form_modal::render(frame, &app.modal, inner_frame);
     }
 }
 

@@ -76,9 +76,21 @@ The initial development priorities are:
 2. ~~Implement the Ratatui terminal interface.~~ (Phase 1)
 3. ~~Build the navigation system.~~ (Phase 1)
 4. ~~Implement user listing and inspection.~~ (Phase 2)
-5. Implement user management operations. (Phase 3)
+5. ~~Implement user management operations.~~ (Phase 3 — run as root for write ops)
 6. Implement group management. (Phase 4)
 7. Add security and audit features. (Phase 5)
+
+### User management shortcuts (Users page, as root)
+
+| Key | Action |
+| --- | --- |
+| A | Create user (form: username, full name, home, shell, groups) |
+| E | Change login shell of selected user |
+| L | Lock account (confirm with YES) |
+| U | Unlock account (confirm with YES) |
+| G | Add user to supplementary groups |
+| X | Set/clear account expiry (YYYY-MM-DD) |
+| D | Delete user (confirm with YES; home is kept) |
 
 ### Building and running
 

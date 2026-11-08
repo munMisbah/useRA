@@ -35,7 +35,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     // Reserves room for the two host rows plus the trailing spacer.
     let min_bottom = 3;
     let used = lines.len() as u16;
-    if area.height > used + min_bottom as u16 + 1 {
+    if area.height > used + min_bottom + 1 {
         while (lines.len() as u16) < area.height - min_bottom - 1 {
             lines.push(Line::from(""));
         }

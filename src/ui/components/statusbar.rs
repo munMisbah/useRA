@@ -39,6 +39,32 @@ fn hints(app: &App) -> Vec<Hint> {
                     label: "Select",
                 });
             }
+            if app.page == Page::Users && app.data.is_root {
+                hints.push(Hint {
+                    key: "A",
+                    label: "Add",
+                });
+                hints.push(Hint {
+                    key: "E",
+                    label: "Shell",
+                });
+                hints.push(Hint {
+                    key: "L/U",
+                    label: "Lock/Unlock",
+                });
+                hints.push(Hint {
+                    key: "G",
+                    label: "Groups",
+                });
+                hints.push(Hint {
+                    key: "X",
+                    label: "Expiry",
+                });
+                hints.push(Hint {
+                    key: "D",
+                    label: "Delete",
+                });
+            }
         }
         Focus::Details => {}
     }
@@ -85,6 +111,16 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     if let Some(err) = &app.load_error {
         spans.push(Span::styled("ERR ", crate::ui::theme::error()));
         spans.push(Span::styled(err.clone(), crate::ui::theme::warning()));
+        spans.push(Span::raw(" · "));
+    }
+    if let Some((ok, message)) = &app.notification {
+        let (tag, style) = if *ok {
+            ("OK ", crate::ui::theme::success())
+        } else {
+            ("ERR ", crate::ui::theme::error())
+        };
+        spans.push(Span::styled(tag, style));
+        spans.push(Span::styled(message.clone(), style));
         spans.push(Span::raw(" · "));
     }
     for (i, hint) in hints(app).into_iter().enumerate() {
