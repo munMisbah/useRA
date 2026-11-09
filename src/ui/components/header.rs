@@ -12,6 +12,7 @@ pub const APP_NAME: &str = "useRA";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Renders the one-line header: logo, version, OS, privilege.
+#[allow(dead_code)]
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let os = &app.data.host.os;
     let (priv_icon, priv_label) = if app.data.is_root {

@@ -98,11 +98,11 @@ Suggested colors:
 
 | Element        | Color   |
 | -------------- | ------- |
-| Background     | #05090F |
-| Panel          | #5F2A78 |
+| Background     | #141414 |
+| Panel          | #332c27 |
 | Primary accent | #F56A00 |
-| Secondary text | #9CA3AF |
-| Main text      | #F9FAFB |
+| Secondary text | #8793a1 |
+| Main text      | #bac4cf |
 | Warning        | #FBBF24 |
 | Error          | #820000 |
 | Success        | #34D399 |
@@ -168,3 +168,4 @@ Never allow panels to overlap.
 - Display operation results clearly.
 - Provide loading or progress feedback for long operations.
 - Preserve navigation state when switching pages where practical.
+

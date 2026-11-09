@@ -68,7 +68,7 @@ pub fn render(
         crate::ui::theme::selected()
     } else {
         Style::new()
-            .bg(ratatui::style::Color::Rgb(0x35, 0x1A, 0x40))
+            .bg(ratatui::style::Color::Rgb(0x28, 0x24, 0x20))
             .fg(crate::ui::theme::TEXT)
     };
 

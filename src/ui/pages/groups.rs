@@ -9,9 +9,8 @@ use ratatui::Frame;
 /// Renders the group list and the selected group's details.
 pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details_area: Rect) {
     let rows: Vec<table::RowData> = app
-        .data
-        .groups
-        .iter()
+        .filtered_groups()
+        .into_iter()
         .map(|g| table::RowData {
             icon: crate::ui::icons::GROUPS,
             name: g.name.clone(),
@@ -34,7 +33,7 @@ pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details_area: Rec
 
 /// Renders details for the currently selected group.
 fn render_details(frame: &mut Frame, app: &App, area: Rect) {
-    let Some(group) = app.data.groups.get(app.selections.groups) else {
+    let Some(group) = app.selected_group() else {
         frame.render_widget(
             Paragraph::new("No group selected").style(crate::ui::theme::dim()),
             area,

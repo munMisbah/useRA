@@ -26,6 +26,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         return;
     }
 
+    // Search input mode: typing into the search bar.
+    if app.search_active {
+        handle_search_key(app, key);
+        return;
+    }
     match (key.code, key.modifiers) {
         // Global keys. `r` reloads except on the Groups page, where it
         // removes members when content is focused.
@@ -41,7 +46,17 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         }
         (KeyCode::Tab, _) => app.next_focus(),
         (KeyCode::BackTab, _) => app.previous_focus(),
-        (KeyCode::Esc, _) => app.notification = None,
+        (KeyCode::Char('/'), KeyModifiers::NONE) if app.is_searchable_page() => {
+            app.search_active = true;
+        }
+        (KeyCode::Esc, _) => {
+            if !app.search_query.is_empty() {
+                app.search_query.clear();
+                app.clamp_selections_to_filtered();
+            } else {
+                app.notification = None;
+            }
+        }
 
         // Focus-dependent keys.
         _ => match app.focus {
@@ -97,6 +112,32 @@ fn handle_modal_key(app: &mut App, key: KeyEvent) {
         KeyCode::BackTab | KeyCode::Up => app.modal.previous_field(),
         KeyCode::Char(c) => app.modal.push_char(c),
         _ => form_modal::handle_input(&mut app.modal, key.code),
+    }
+}
+
+/// Routes keys while typing into the search bar.
+fn handle_search_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.search_active = false;
+            app.search_query.clear();
+            app.clamp_selections_to_filtered();
+        }
+        KeyCode::Enter => {
+            app.search_active = false;
+            app.focus = Focus::Content;
+        }
+        KeyCode::Backspace => {
+            app.search_query.pop();
+            app.clamp_selections_to_filtered();
+        }
+        KeyCode::Down => move_content_selection(app, 1),
+        KeyCode::Up => move_content_selection(app, -1),
+        KeyCode::Char(c) => {
+            app.search_query.push(c);
+            app.clamp_selections_to_filtered();
+        }
+        _ => {}
     }
 }
 
@@ -497,7 +538,7 @@ fn finish(app: &mut App, res: crate::services::user_service::OpResult) {
 fn move_content_selection(app: &mut App, delta: isize) {
     match app.page {
         Page::Users => {
-            let len = app.data.users.len();
+            let len = app.filtered_users().len();
             app.selections.users =
                 crate::ui::components::table::move_selection(app.selections.users, len, delta);
             app.selections.users_table.select(if len == 0 {
@@ -507,7 +548,7 @@ fn move_content_selection(app: &mut App, delta: isize) {
             });
         }
         Page::Groups => {
-            let len = app.data.groups.len();
+            let len = app.filtered_groups().len();
             app.selections.groups =
                 crate::ui::components::table::move_selection(app.selections.groups, len, delta);
             app.selections.groups_table.select(if len == 0 {
@@ -517,7 +558,7 @@ fn move_content_selection(app: &mut App, delta: isize) {
             });
         }
         Page::Sessions => {
-            let len = app.data.sessions.len();
+            let len = app.filtered_sessions().len();
             app.selections.sessions =
                 crate::ui::components::table::move_selection(app.selections.sessions, len, delta);
             app.selections.sessions_table.select(if len == 0 {
@@ -592,5 +633,99 @@ mod tests {
         handle_key(&mut app, key_press(KeyCode::Up));
         assert_eq!(app.selections.users, 4);
         assert_eq!(app.selections.users_table.selected(), Some(4));
+    }
+
+    #[test]
+    fn search_mode_filters_users_and_clears_on_esc() {
+        let mut app = App::default();
+        app.page = Page::Users;
+        app.reload();
+        app.data.users = vec![
+            crate::models::User {
+                name: "alice".into(),
+                uid: 1001,
+                gid: 1001,
+                gecos: "Alice Smith".into(),
+                home: "/home/alice".into(),
+                shell: "/bin/bash".into(),
+                supplementary_groups: vec![],
+            },
+            crate::models::User {
+                name: "bob".into(),
+                uid: 1002,
+                gid: 1002,
+                gecos: "Bob Jones".into(),
+                home: "/home/bob".into(),
+                shell: "/bin/zsh".into(),
+                supplementary_groups: vec![],
+            },
+            crate::models::User {
+                name: "charlie".into(),
+                uid: 1003,
+                gid: 1003,
+                gecos: "Charlie Brown".into(),
+                home: "/home/charlie".into(),
+                shell: "/bin/bash".into(),
+                supplementary_groups: vec![],
+            },
+        ];
+        app.clamp_selections_to_filtered();
+        assert_eq!(app.filtered_users().len(), 3);
+
+        // Press / to activate search
+        handle_key(&mut app, key_press(KeyCode::Char('/')));
+        assert!(app.search_active);
+
+        // Type 'b' then 'o' -> 'bo' matches bob
+        handle_key(&mut app, key_press(KeyCode::Char('b')));
+        assert_eq!(app.search_query, "b");
+
+        // Type 'o' -> 'bo' matches bob
+        handle_key(&mut app, key_press(KeyCode::Char('o')));
+        assert_eq!(app.search_query, "bo");
+        assert_eq!(app.filtered_users().len(), 1);
+        assert_eq!(app.selected_user().unwrap().name, "bob");
+
+        // Press Enter -> search mode closes, filter remains
+        handle_key(&mut app, key_press(KeyCode::Enter));
+        assert!(!app.search_active);
+        assert_eq!(app.filtered_users().len(), 1);
+
+        // Press Esc -> clears search filter and restores all 3 users
+        handle_key(&mut app, key_press(KeyCode::Esc));
+        assert_eq!(app.search_query, "");
+        assert_eq!(app.filtered_users().len(), 3);
+    }
+
+    #[test]
+    fn search_only_activates_on_searchable_pages() {
+        let mut app = App::default();
+
+        // Dashboard: not searchable
+        app.page = Page::Dashboard;
+        handle_key(&mut app, key_press(KeyCode::Char('/')));
+        assert!(!app.search_active);
+
+        // Settings: not searchable
+        app.page = Page::Settings;
+        handle_key(&mut app, key_press(KeyCode::Char('/')));
+        assert!(!app.search_active);
+
+        // Users: searchable
+        app.page = Page::Users;
+        handle_key(&mut app, key_press(KeyCode::Char('/')));
+        assert!(app.search_active);
+        app.search_active = false;
+
+        // Groups: searchable
+        app.page = Page::Groups;
+        handle_key(&mut app, key_press(KeyCode::Char('/')));
+        assert!(app.search_active);
+        app.search_active = false;
+
+        // Sessions: searchable
+        app.page = Page::Sessions;
+        handle_key(&mut app, key_press(KeyCode::Char('/')));
+        assert!(app.search_active);
     }
 }

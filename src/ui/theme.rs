@@ -5,15 +5,15 @@
 use ratatui::style::{Color, Modifier, Style};
 
 /// Background color of the whole application.
-pub const BG: Color = Color::Rgb(0x05, 0x09, 0x0F);
+pub const BG: Color = Color::Rgb(0x14, 0x14, 0x14);
 /// Panel background color.
-pub const PANEL: Color = Color::Rgb(0x5F, 0x2A, 0x78);
+pub const PANEL: Color = Color::Rgb(0x33, 0x2C, 0x27);
 /// Primary accent color (selections, highlights).
 pub const ACCENT: Color = Color::Rgb(0xF5, 0x6A, 0x00);
 /// Secondary/dimmed text.
-pub const TEXT_DIM: Color = Color::Rgb(0x9C, 0xA3, 0xAF);
+pub const TEXT_DIM: Color = Color::Rgb(0x87, 0x93, 0xA1);
 /// Primary text color.
-pub const TEXT: Color = Color::Rgb(0xF9, 0xFA, 0xFB);
+pub const TEXT: Color = Color::Rgb(0xBA, 0xC4, 0xCF);
 /// Warning color.
 pub const WARNING: Color = Color::Rgb(0xFB, 0xBF, 0x24);
 /// Error color.
@@ -75,7 +75,12 @@ pub const fn warning() -> Style {
 
 /// Outer margin between terminal edge and panels (Superfile-style
 /// breathing room).
+#[allow(dead_code)]
 pub const OUTER_MARGIN: u16 = 1;
+/// Outer horizontal margin (breathing room on left and right).
+pub const MARGIN_X: u16 = 2;
+/// Outer vertical margin (breathing room on top and bottom).
+pub const MARGIN_Y: u16 = 1;
 
 #[cfg(test)]
 mod tests {
@@ -83,11 +88,11 @@ mod tests {
 
     #[test]
     fn palette_matches_design_doc() {
-        assert_eq!(BG, Color::Rgb(0x05, 0x09, 0x0F));
-        assert_eq!(PANEL, Color::Rgb(0x5F, 0x2A, 0x78));
+        assert_eq!(BG, Color::Rgb(0x14, 0x14, 0x14));
+        assert_eq!(PANEL, Color::Rgb(0x33, 0x2C, 0x27));
         assert_eq!(ACCENT, Color::Rgb(0xF5, 0x6A, 0x00));
-        assert_eq!(TEXT_DIM, Color::Rgb(0x9C, 0xA3, 0xAF));
-        assert_eq!(TEXT, Color::Rgb(0xF9, 0xFA, 0xFB));
+        assert_eq!(TEXT_DIM, Color::Rgb(0x87, 0x93, 0xA1));
+        assert_eq!(TEXT, Color::Rgb(0xBA, 0xC4, 0xCF));
         assert_eq!(WARNING, Color::Rgb(0xFB, 0xBF, 0x24));
         assert_eq!(ERROR, Color::Rgb(0x82, 0x00, 0x00));
         assert_eq!(SUCCESS, Color::Rgb(0x34, 0xD3, 0x99));

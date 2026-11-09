@@ -22,7 +22,8 @@ const SIDEBAR_MIN_WIDTH: u16 = 60;
 
 /// Computed frame regions handed to page renderers.
 pub struct Regions {
-    /// Header strip across the top.
+    /// Header strip across the top (reserved for overlays/legacy).
+    #[allow(dead_code)]
     pub header: Rect,
     /// Navigation sidebar.
     pub sidebar: Rect,
@@ -45,7 +46,6 @@ impl Regions {
         };
 
         let vertical = Layout::vertical([
-            Constraint::Length(1), // header
             Constraint::Min(1),    // body
             Constraint::Length(1), // footer
         ])
@@ -56,14 +56,15 @@ impl Regions {
             Constraint::Min(20),
             Constraint::Percentage(if show_details { 25 } else { 0 }),
         ])
-        .split(vertical[1]);
+        .spacing(1)
+        .split(vertical[0]);
 
         Regions {
-            header: vertical[0],
+            header: Rect::default(),
             sidebar: horizontal[0],
             content: horizontal[1],
             details: horizontal[2],
-            footer: vertical[2],
+            footer: vertical[1],
         }
     }
 
@@ -75,32 +76,44 @@ impl Regions {
 
 /// Renders the complete frame for the current app state.
 pub fn render(frame: &mut Frame, app: &mut App) {
-    let margin = crate::ui::theme::OUTER_MARGIN;
+    let margin_x = crate::ui::theme::MARGIN_X;
+    let margin_y = crate::ui::theme::MARGIN_Y;
     let frame_area = frame.area();
     let inner_frame = Rect {
-        x: frame_area.x + margin,
-        y: frame_area.y + margin,
-        width: frame_area.width.saturating_sub(margin * 2),
-        height: frame_area.height.saturating_sub(margin * 2),
+        x: frame_area.x + margin_x,
+        y: frame_area.y + margin_y,
+        width: frame_area.width.saturating_sub(margin_x * 2),
+        height: frame_area.height.saturating_sub(margin_y * 2),
     };
     frame.render_widget(Block::new().style(crate::ui::theme::base()), frame_area);
 
     let regions = Regions::compute(inner_frame);
 
-    crate::ui::components::header::render(frame, app, regions.header);
-    let sidebar_inner = crate::ui::components::panel::frame_area(
-        frame,
-        regions.sidebar,
-        crate::ui::components::header::APP_NAME,
-        app.focus == Focus::Sidebar,
-    );
-    crate::ui::components::sidebar::render(frame, app, sidebar_inner);
+    // Sidebar without border
+    crate::ui::components::sidebar::render(frame, app, regions.sidebar);
+
+    // Center Content Panel with title
     let content_inner = crate::ui::components::panel::frame_area(
         frame,
         regions.content,
         app.page.title(),
         app.focus == Focus::Content,
     );
+
+    let page_area = if app.is_searchable_page() {
+        // Search bar at top of center panel on list pages
+        let content_chunks = Layout::vertical([
+            Constraint::Length(1), // 🔍 (/) Type something
+            Constraint::Min(1),    // page content
+        ])
+        .split(content_inner);
+
+        crate::ui::components::search_bar::render(frame, content_chunks[0], app);
+        content_chunks[1]
+    } else {
+        content_inner
+    };
+
     let details_inner = if regions.details_visible() {
         crate::ui::components::panel::frame_area(
             frame,
@@ -111,7 +124,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     } else {
         regions.details
     };
-    crate::ui::pages::render(frame, app, content_inner, details_inner);
+    crate::ui::pages::render(frame, app, page_area, details_inner);
     crate::ui::components::statusbar::render(frame, app, regions.footer);
 
     if app.show_help {

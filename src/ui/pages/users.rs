@@ -9,9 +9,8 @@ use ratatui::Frame;
 /// Renders the user list and the selected user's details.
 pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details_area: Rect) {
     let rows: Vec<table::RowData> = app
-        .data
-        .users
-        .iter()
+        .filtered_users()
+        .into_iter()
         .map(|u| table::RowData {
             icon: if u.account_type() == crate::models::AccountType::Regular {
                 crate::ui::icons::USER
@@ -38,7 +37,7 @@ pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details_area: Rec
 
 /// Renders details for the currently selected user.
 fn render_details(frame: &mut Frame, app: &App, area: Rect) {
-    let Some(user) = app.data.users.get(app.selections.users) else {
+    let Some(user) = app.selected_user() else {
         frame.render_widget(
             Paragraph::new("No user selected").style(crate::ui::theme::dim()),
             area,

@@ -125,6 +125,10 @@ pub struct App {
     pub data: AppData,
     /// Last load error message, shown in the footer until next load.
     pub load_error: Option<String>,
+    /// Whether the search bar is currently focused for typing.
+    pub search_active: bool,
+    /// Live search query string used for filtering lists.
+    pub search_query: String,
 }
 
 impl App {
@@ -177,13 +181,22 @@ impl App {
     /// Moves to the next page (sidebar down) and reloads data.
     pub fn next_page(&mut self) {
         self.page = self.page.next();
+        self.search_active = false;
+        self.search_query.clear();
         self.reload();
     }
 
     /// Moves to the previous page (sidebar up) and reloads data.
     pub fn previous_page(&mut self) {
         self.page = self.page.previous();
+        self.search_active = false;
+        self.search_query.clear();
         self.reload();
+    }
+
+    /// Whether the current active page supports searching (Users, Groups, Sessions).
+    pub fn is_searchable_page(&self) -> bool {
+        matches!(self.page, Page::Users | Page::Groups | Page::Sessions)
     }
 
     /// Cycles panel focus forward.
@@ -206,14 +219,101 @@ impl App {
         self.notification = Some((ok, message.into()));
     }
 
+    /// Filtered users matching search_query.
+    pub fn filtered_users(&self) -> Vec<&crate::models::User> {
+        let q = self.search_query.trim().to_lowercase();
+        if q.is_empty() {
+            return self.data.users.iter().collect();
+        }
+        self.data
+            .users
+            .iter()
+            .filter(|u| {
+                u.name.to_lowercase().contains(&q)
+                    || u.uid.to_string().contains(&q)
+                    || u.gecos.to_lowercase().contains(&q)
+                    || u.shell.to_lowercase().contains(&q)
+                    || u.account_type().label().to_lowercase().contains(&q)
+            })
+            .collect()
+    }
+
+    /// Filtered groups matching search_query.
+    pub fn filtered_groups(&self) -> Vec<&crate::models::Group> {
+        let q = self.search_query.trim().to_lowercase();
+        if q.is_empty() {
+            return self.data.groups.iter().collect();
+        }
+        self.data
+            .groups
+            .iter()
+            .filter(|g| {
+                g.name.to_lowercase().contains(&q)
+                    || g.gid.to_string().contains(&q)
+                    || g.members.iter().any(|m| m.to_lowercase().contains(&q))
+            })
+            .collect()
+    }
+
+    /// Filtered sessions matching search_query.
+    pub fn filtered_sessions(&self) -> Vec<&crate::models::Session> {
+        let q = self.search_query.trim().to_lowercase();
+        if q.is_empty() {
+            return self.data.sessions.iter().collect();
+        }
+        self.data
+            .sessions
+            .iter()
+            .filter(|s| {
+                s.user.to_lowercase().contains(&q)
+                    || s.id.to_lowercase().contains(&q)
+                    || s.seat.to_lowercase().contains(&q)
+            })
+            .collect()
+    }
+
     /// Selected user on the Users page, if any.
     pub fn selected_user(&self) -> Option<&crate::models::User> {
-        self.data.users.get(self.selections.users)
+        self.filtered_users().get(self.selections.users).copied()
     }
 
     /// Selected group on the Groups page, if any.
     pub fn selected_group(&self) -> Option<&crate::models::Group> {
-        self.data.groups.get(self.selections.groups)
+        self.filtered_groups().get(self.selections.groups).copied()
+    }
+
+    /// Selected session on the Sessions page, if any.
+    pub fn selected_session(&self) -> Option<&crate::models::Session> {
+        self.filtered_sessions()
+            .get(self.selections.sessions)
+            .copied()
+    }
+
+    /// Clamps selections to the filtered row counts.
+    pub fn clamp_selections_to_filtered(&mut self) {
+        let u_len = self.filtered_users().len();
+        self.selections.users = self.selections.users.min(u_len.saturating_sub(1));
+        self.selections.users_table.select(if u_len == 0 {
+            None
+        } else {
+            Some(self.selections.users)
+        });
+
+        let g_len = self.filtered_groups().len();
+        self.selections.groups = self.selections.groups.min(g_len.saturating_sub(1));
+        self.selections.groups_table.select(if g_len == 0 {
+            None
+        } else {
+            Some(self.selections.groups)
+        });
+
+        let s_len = self.filtered_sessions().len();
+        self.selections.sessions = self.selections.sessions.min(s_len.saturating_sub(1));
+        self.selections.sessions_table.select(if s_len == 0 {
+            None
+        } else {
+            Some(self.selections.sessions)
+        });
     }
 }
 

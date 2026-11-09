@@ -13,14 +13,24 @@ use ratatui::Frame;
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let sidebar_focused = app.focus == Focus::Sidebar;
     let mut lines: Vec<Line> = Vec::new();
-    // Blank row under the border for breathing room.
+    // App title at top of the borderless sidebar
+    lines.push(Line::from(vec![
+        Span::raw(" "),
+        Span::styled(
+            format!("{} ", crate::ui::icons::LOGO),
+            crate::ui::theme::accent(),
+        ),
+        Span::styled(
+            crate::ui::components::header::APP_NAME,
+            crate::ui::theme::title(),
+        ),
+    ]));
     lines.push(Line::from(""));
-
     for page in PAGES {
         let icon = crate::ui::icons::for_page(page);
         let active = page == app.page;
         let marker = if active { "> " } else { "  " };
-        let text = format!("{marker}{icon} {}", page.title());
+        let text = format!(" {marker}{icon} {}", page.title());
         let style = if active {
             crate::ui::theme::accent()
         } else if sidebar_focused {
@@ -49,7 +59,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
 
 /// Dim section label like Superfile's "Pinned"/"Disks".
 fn section_label(title: &str) -> Line<'static> {
-    Line::from(format!("─ {title}").set_style(crate::ui::theme::dim()))
+    Line::from(format!(" ─ {title}").set_style(crate::ui::theme::dim()))
 }
 
 /// Hostname and privilege as a dim two-line block.
@@ -80,6 +90,6 @@ mod tests {
 
     #[test]
     fn section_label_has_divider_prefix() {
-        assert!(section_label("Host").to_string().starts_with('─'));
+        assert!(section_label("Host").to_string().contains('─'));
     }
 }

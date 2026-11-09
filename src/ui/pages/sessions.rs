@@ -8,19 +8,18 @@ use ratatui::Frame;
 
 /// Renders the session list and selected session details.
 pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details_area: Rect) {
-    if app.data.sessions.is_empty() {
+    let filtered = app.filtered_sessions();
+    if filtered.is_empty() {
         frame.render_widget(
-            Paragraph::new(" No login sessions reported (loginctl unavailable or no sessions).")
+            Paragraph::new(" No login sessions match query or reported.")
                 .style(crate::ui::theme::dim()),
             content,
         );
         return;
     }
 
-    let rows: Vec<table::RowData> = app
-        .data
-        .sessions
-        .iter()
+    let rows: Vec<table::RowData> = filtered
+        .into_iter()
         .map(|s| table::RowData {
             icon: if s.active {
                 crate::ui::icons::STATUS
@@ -51,7 +50,7 @@ pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details_area: Rec
 
 /// Renders details for the currently selected session.
 fn render_details(frame: &mut Frame, app: &App, area: Rect) {
-    let Some(session) = app.data.sessions.get(app.selections.sessions) else {
+    let Some(session) = app.selected_session() else {
         return;
     };
     let fields = vec![
