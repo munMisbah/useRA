@@ -58,6 +58,11 @@ tar -xzf "$TMP/usera.tar.gz" -C "$TMP"
 [ -f "$TMP/usera" ] || fail "archive did not contain the 'usera' binary"
 
 # --- Install ------------------------------------------------------------
+PREV_VER=""
+if command -v usera >/dev/null 2>&1; then
+    PREV_VER="$(usera --version 2>/dev/null | awk '{print $2}' || true)"
+fi
+
 # Prefer /usr/local/bin (system-wide); fall back to ~/.local/bin without
 # root. The binary itself needs root only when managing accounts.
 if [ -w /usr/local/bin ] || [ "$(id -u)" = "0" ]; then
@@ -80,10 +85,16 @@ fi
 
 mkdir -p "$STATE_DIR"
 
-log "installed to $BIN_PATH"
+if [ -n "$PREV_VER" ]; then
+    NEW_VER="$("$BIN_PATH" --version 2>/dev/null | awk '{print $2}' || echo 'latest')"
+    log "successfully updated useRA ($PREV_VER -> $NEW_VER) at $BIN_PATH"
+else
+    log "installed to $BIN_PATH"
+fi
 log ""
 log "run it:            usera"
 log "manage accounts:   sudo usera"
+log "update in future:  usera update"
 log "font check:        curl -sLo- ${BASE_URL%/*/*}/raw/main/scripts/check-font.sh | bash"
 log "audit log:         ${STATE_DIR}/audit.log (root: /var/log/usera/audit.log)"
 log ""

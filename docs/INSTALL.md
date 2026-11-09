@@ -82,6 +82,22 @@ usera
 - Audit log: `/var/log/usera/audit.log` (root) or
   `$XDG_STATE_HOME/usera/audit.log`.
 
+## Updating
+
+To update `useRA` to the latest release:
+
+```sh
+usera update
+# or with sudo if installed in /usr/local/bin:
+sudo usera update
+```
+
+Alternatively, re-run the one-liner installer:
+
+```sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/munMisbah/useRA/main/install.sh)"
+```
+
 ## Uninstall
 
 ```sh

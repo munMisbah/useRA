@@ -39,6 +39,6 @@ mod tests {
 
     #[test]
     fn version_matches_cargo_toml() {
-        assert_eq!(APP_VERSION, "1.0.0");
+        assert_eq!(APP_VERSION, env!("CARGO_PKG_VERSION"));
     }
 }
