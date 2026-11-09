@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-REPO="${USERA_REPO:-OWNER/useRA}"
+REPO="${USERA_REPO:-munMisbah/useRA}"
 INSTALL_BIN="/usr/local/bin/usera"
 STATE_DIR="$HOME/.local/state/usera"
 TMP="$(mktemp -d)"

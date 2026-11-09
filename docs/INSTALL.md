@@ -39,7 +39,7 @@ Once the repository is public on GitHub under `OWNER/useRA` with release
 artifacts attached, users install like Superfile:
 
 ```sh
-bash -c "$(curl -sLo- https://raw.githubusercontent.com/OWNER/useRA/main/install.sh)"
+bash -c "$(curl -sLo- https://raw.githubusercontent.com/munMisbah/useRA/main/install.sh)"
 ```
 
 The script downloads the latest `usera-linux-x86_64.tar.gz` from GitHub
