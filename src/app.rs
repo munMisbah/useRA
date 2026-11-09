@@ -2,6 +2,7 @@
 //! the live system data snapshot.
 
 use crate::services::AppData;
+use ratatui::widgets::TableState;
 
 /// Identifiable main pages, matching the sidebar navigation order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -77,7 +78,6 @@ impl Focus {
     }
 
     /// Previous panel in focus order, wrapping around.
-    #[allow(dead_code)]
     pub fn previous(self) -> Self {
         match self {
             Focus::Sidebar => Focus::Details,
@@ -96,6 +96,12 @@ pub struct Selections {
     pub groups: usize,
     /// Selected row on the Sessions page.
     pub sessions: usize,
+    /// Table scroll & selection state for Users.
+    pub users_table: TableState,
+    /// Table scroll & selection state for Groups.
+    pub groups_table: TableState,
+    /// Table scroll & selection state for Sessions.
+    pub sessions_table: TableState,
 }
 
 /// Root application state.
@@ -138,6 +144,27 @@ impl App {
                     .selections
                     .sessions
                     .min(data.sessions.len().saturating_sub(1));
+                self.selections
+                    .users_table
+                    .select(if data.users.is_empty() {
+                        None
+                    } else {
+                        Some(self.selections.users)
+                    });
+                self.selections
+                    .groups_table
+                    .select(if data.groups.is_empty() {
+                        None
+                    } else {
+                        Some(self.selections.groups)
+                    });
+                self.selections
+                    .sessions_table
+                    .select(if data.sessions.is_empty() {
+                        None
+                    } else {
+                        Some(self.selections.sessions)
+                    });
                 self.load_error = None;
                 self.data = data;
             }
@@ -165,7 +192,6 @@ impl App {
     }
 
     /// Cycles panel focus backward.
-    #[allow(dead_code)]
     pub fn previous_focus(&mut self) {
         self.focus = self.focus.previous();
     }
@@ -212,6 +238,18 @@ mod tests {
         assert_eq!(focus, Focus::Details);
         focus = focus.next();
         assert_eq!(focus, Focus::Sidebar);
+    }
+
+    #[test]
+    fn previous_focus_cycles_backward() {
+        let mut app = App::default();
+        assert_eq!(app.focus, Focus::Content);
+        app.previous_focus();
+        assert_eq!(app.focus, Focus::Sidebar);
+        app.previous_focus();
+        assert_eq!(app.focus, Focus::Details);
+        app.previous_focus();
+        assert_eq!(app.focus, Focus::Content);
     }
 
     #[test]

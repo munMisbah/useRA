@@ -40,6 +40,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             app.reload();
         }
         (KeyCode::Tab, _) => app.next_focus(),
+        (KeyCode::BackTab, _) => app.previous_focus(),
         (KeyCode::Esc, _) => app.notification = None,
 
         // Focus-dependent keys.
@@ -47,7 +48,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             Focus::Sidebar => match key.code {
                 KeyCode::Down => app.next_page(),
                 KeyCode::Up => app.previous_page(),
-                KeyCode::Left | KeyCode::Right => app.next_focus(),
+                KeyCode::Left => app.previous_focus(),
+                KeyCode::Right => app.next_focus(),
                 KeyCode::Enter => app.next_focus(),
                 _ => {}
             },
@@ -57,7 +59,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 match key.code {
                     KeyCode::Down => move_content_selection(app, 1),
                     KeyCode::Up => move_content_selection(app, -1),
-                    KeyCode::Left | KeyCode::Right => app.next_focus(),
+                    KeyCode::Left => app.previous_focus(),
+                    KeyCode::Right => app.next_focus(),
                     KeyCode::Enter => {}
                     // Operation keys on the Users page.
                     KeyCode::Char('a' | 'A') if user_page => open_create_user(app),
@@ -77,7 +80,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 }
             }
             Focus::Details => match key.code {
-                KeyCode::Left | KeyCode::Right => app.next_focus(),
+                KeyCode::Left => app.previous_focus(),
+                KeyCode::Right => app.next_focus(),
                 _ => {}
             },
         },
@@ -496,17 +500,97 @@ fn move_content_selection(app: &mut App, delta: isize) {
             let len = app.data.users.len();
             app.selections.users =
                 crate::ui::components::table::move_selection(app.selections.users, len, delta);
+            app.selections.users_table.select(if len == 0 {
+                None
+            } else {
+                Some(app.selections.users)
+            });
         }
         Page::Groups => {
             let len = app.data.groups.len();
             app.selections.groups =
                 crate::ui::components::table::move_selection(app.selections.groups, len, delta);
+            app.selections.groups_table.select(if len == 0 {
+                None
+            } else {
+                Some(app.selections.groups)
+            });
         }
         Page::Sessions => {
             let len = app.data.sessions.len();
             app.selections.sessions =
                 crate::ui::components::table::move_selection(app.selections.sessions, len, delta);
+            app.selections.sessions_table.select(if len == 0 {
+                None
+            } else {
+                Some(app.selections.sessions)
+            });
         }
         Page::Dashboard | Page::Settings => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn key_press(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn left_arrow_moves_focus_left() {
+        let mut app = App::default();
+        assert_eq!(app.focus, Focus::Content);
+
+        // Pressing Left on Content should go to Sidebar (leftward)
+        handle_key(&mut app, key_press(KeyCode::Left));
+        assert_eq!(app.focus, Focus::Sidebar);
+
+        // Pressing Right on Sidebar should go to Content (rightward)
+        handle_key(&mut app, key_press(KeyCode::Right));
+        assert_eq!(app.focus, Focus::Content);
+
+        // Pressing Right on Content should go to Details (rightward)
+        handle_key(&mut app, key_press(KeyCode::Right));
+        assert_eq!(app.focus, Focus::Details);
+
+        // Pressing Left on Details should go to Content (leftward)
+        handle_key(&mut app, key_press(KeyCode::Left));
+        assert_eq!(app.focus, Focus::Content);
+    }
+
+    #[test]
+    fn content_selection_updates_table_state() {
+        let mut app = App::default();
+        app.page = Page::Users;
+        app.data.users = (0..30)
+            .map(|i| crate::models::User {
+                name: format!("user{i}"),
+                uid: 1000 + i as u32,
+                gid: 1000 + i as u32,
+                gecos: String::new(),
+                home: format!("/home/user{i}"),
+                shell: "/bin/bash".into(),
+                supplementary_groups: vec![],
+            })
+            .collect();
+        app.reload();
+
+        assert_eq!(app.selections.users, 0);
+        assert_eq!(app.selections.users_table.selected(), Some(0));
+
+        // Move down 5 times
+        for i in 1..=5 {
+            handle_key(&mut app, key_press(KeyCode::Down));
+            assert_eq!(app.selections.users, i);
+            assert_eq!(app.selections.users_table.selected(), Some(i));
+        }
+
+        // Move up 2 times
+        handle_key(&mut app, key_press(KeyCode::Up));
+        assert_eq!(app.selections.users, 4);
+        assert_eq!(app.selections.users_table.selected(), Some(4));
     }
 }

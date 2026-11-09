@@ -24,7 +24,7 @@ fn run_loop(terminal: &mut ratatui::DefaultTerminal) -> io::Result<()> {
     let mut app = App::default();
     app.reload();
     while !app.should_quit {
-        terminal.draw(|frame| ui::layout::render(frame, &app))?;
+        terminal.draw(|frame| ui::layout::render(frame, &mut app))?;
         if let Some(key) = next_key()? {
             events::handler::handle_key(&mut app, key);
         }

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # useRA installer — the one-liner:
 #
-#   bash -c "$(curl -sLo- https://raw.githubusercontent.com/OWNER/useRA/main/install.sh)"
+#   bash -c "$(curl -sLo- https://raw.githubusercontent.com/munMisbah/useRA/main/install.sh)"
 #
 # Downloads the latest release binary from GitHub Releases, verifies its
 # checksum, and installs it. Set USERA_REPO to override the slug:
 #
 #   USERA_REPO=yourname/useRA bash -c "$(curl ...)"
 #
-# Review before running: https://github.com/OWNER/useRA/blob/main/install.sh
+# Review before running: https://github.com/munMisbah/useRA/blob/main/install.sh
 
 set -euo pipefail
 

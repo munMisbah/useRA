@@ -7,7 +7,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 /// Renders the group list and the selected group's details.
-pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
+pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details_area: Rect) {
     let rows: Vec<table::RowData> = app
         .data
         .groups
@@ -23,11 +23,8 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
         frame,
         content,
         &rows,
-        if app.focus == Focus::Content {
-            app.selections.groups
-        } else {
-            usize::MAX
-        },
+        &mut app.selections.groups_table,
+        app.focus == Focus::Content,
     );
 
     if details_area.width > 0 {

@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release (Linux x86_64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package artifacts
+        run: |
+          tar -czf usera-linux-x86_64.tar.gz -C target/release usera
+          sha256sum usera-linux-x86_64.tar.gz > usera-linux-x86_64.tar.gz.sha256
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            usera-linux-x86_64.tar.gz
+            usera-linux-x86_64.tar.gz.sha256
+          generate_release_notes: true

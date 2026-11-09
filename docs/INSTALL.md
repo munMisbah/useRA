@@ -35,7 +35,7 @@ sudo install -m 755 target/release/usera /usr/local/bin/usera
 
 ## Option B — One-liner install (release binary)
 
-Once the repository is public on GitHub under `OWNER/useRA` with release
+Once the repository is public on GitHub under `munMisbah/useRA` with release
 artifacts attached, users install like Superfile:
 
 ```sh

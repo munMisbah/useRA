@@ -7,7 +7,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 /// Renders the session list and selected session details.
-pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
+pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details_area: Rect) {
     if app.data.sessions.is_empty() {
         frame.render_widget(
             Paragraph::new(" No login sessions reported (loginctl unavailable or no sessions).")
@@ -40,11 +40,8 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
         frame,
         content,
         &rows,
-        if app.focus == Focus::Content {
-            app.selections.sessions
-        } else {
-            usize::MAX
-        },
+        &mut app.selections.sessions_table,
+        app.focus == Focus::Content,
     );
 
     if details_area.width > 0 {

@@ -7,7 +7,7 @@ use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
 /// Renders the user list and the selected user's details.
-pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
+pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details_area: Rect) {
     let rows: Vec<table::RowData> = app
         .data
         .users
@@ -27,11 +27,8 @@ pub fn render(frame: &mut Frame, app: &App, content: Rect, details_area: Rect) {
         frame,
         content,
         &rows,
-        if app.focus == Focus::Content {
-            app.selections.users
-        } else {
-            usize::MAX
-        },
+        &mut app.selections.users_table,
+        app.focus == Focus::Content,
     );
 
     if details_area.width > 0 {

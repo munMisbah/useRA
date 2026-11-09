@@ -11,7 +11,7 @@ use ratatui::layout::Rect;
 use ratatui::Frame;
 
 /// Dispatches content and details rendering for the active page.
-pub fn render(frame: &mut Frame, app: &App, content: Rect, details: Rect) {
+pub fn render(frame: &mut Frame, app: &mut App, content: Rect, details: Rect) {
     match app.page {
         Page::Dashboard => dashboard::render(frame, app, content, details),
         Page::Users => users::render(frame, app, content, details),

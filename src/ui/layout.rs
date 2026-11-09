@@ -74,7 +74,7 @@ impl Regions {
 }
 
 /// Renders the complete frame for the current app state.
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &mut App) {
     let margin = crate::ui::theme::OUTER_MARGIN;
     let frame_area = frame.area();
     let inner_frame = Rect {
