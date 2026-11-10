@@ -45,6 +45,10 @@ fn hints(app: &App) -> Vec<Hint> {
                     label: "Add",
                 });
                 hints.push(Hint {
+                    key: "P",
+                    label: "Passwd",
+                });
+                hints.push(Hint {
                     key: "E",
                     label: "Shell",
                 });

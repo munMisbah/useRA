@@ -36,15 +36,17 @@ Global:
 | `↑` `↓` | navigate within the focused panel |
 | `Enter` | select / continue from Navigation |
 | `r` | reload data from the system |
+| `/` | search / filter list (Users, Groups, Sessions) |
 | `?` | help modal (any key closes it) |
-| `Esc` | close modal · dismiss status message |
+| `Esc` | clear search · close modal · dismiss status message |
 | `q` or `Ctrl+C` | quit |
 
 Users page (Content focus):
 
 | Key | Action |
 | --- | --- |
-| `A` | create user |
+| `A` | create user (optional masked password field included) |
+| `P` | set / change password for the selected user |
 | `E` | change login shell of the selected user |
 | `L` | lock the selected account (type YES) |
 | `U` | unlock the selected account (type YES) |

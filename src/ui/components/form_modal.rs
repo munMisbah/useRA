@@ -21,6 +21,8 @@ pub enum ModalKind {
     AddGroups(String),
     /// Set expiry form.
     SetExpiry(String),
+    /// Set password form.
+    SetPassword(String),
     /// Create-group form.
     CreateGroup,
     /// Rename-group form (value = current name).
@@ -40,13 +42,32 @@ pub struct Field {
     pub label: &'static str,
     /// Current input buffer.
     pub value: String,
+    /// Whether this field masks input characters.
+    pub masked: bool,
 }
 
 impl Field {
-    fn new(label: &'static str) -> Self {
+    pub fn new(label: &'static str) -> Self {
         Field {
             label,
             value: String::new(),
+            masked: false,
+        }
+    }
+
+    pub fn with_value(label: &'static str, value: impl Into<String>) -> Self {
+        Field {
+            label,
+            value: value.into(),
+            masked: false,
+        }
+    }
+
+    pub fn masked(label: &'static str) -> Self {
+        Field {
+            label,
+            value: String::new(),
+            masked: true,
         }
     }
 }
@@ -78,6 +99,7 @@ impl Modal {
                 Field::new("Home dir (default /home/<name>)"),
                 Field::new("Shell [/bin/bash]"),
                 Field::new("Supplementary groups (comma-sep, optional)"),
+                Field::masked("Password (optional)"),
             ],
             ..Modal::default()
         }
@@ -87,10 +109,7 @@ impl Modal {
     pub fn edit_shell(user: String, current: &str) -> Self {
         Modal {
             kind: Some(ModalKind::EditShell(user)),
-            fields: vec![Field {
-                label: "New shell",
-                value: current.to_string(),
-            }],
+            fields: vec![Field::with_value("New shell", current)],
             ..Modal::default()
         }
     }
@@ -124,6 +143,18 @@ impl Modal {
         }
     }
 
+    /// Opens the set-password form for a user.
+    pub fn set_password(user: String) -> Self {
+        Modal {
+            kind: Some(ModalKind::SetPassword(user)),
+            fields: vec![
+                Field::masked("New password"),
+                Field::masked("Confirm password"),
+            ],
+            ..Modal::default()
+        }
+    }
+
     /// Opens a create-group form (name + optional GID).
     pub fn create_group() -> Self {
         Modal {
@@ -137,10 +168,7 @@ impl Modal {
     pub fn rename_group(current: String) -> Self {
         Modal {
             kind: Some(ModalKind::RenameGroup(current.clone())),
-            fields: vec![Field {
-                label: "New name",
-                value: current,
-            }],
+            fields: vec![Field::with_value("New name", current)],
             ..Modal::default()
         }
     }
@@ -158,10 +186,10 @@ impl Modal {
     pub fn group_remove_members(group: String, members: &[String]) -> Self {
         Modal {
             kind: Some(ModalKind::GroupRemoveMembers(group)),
-            fields: vec![Field {
-                label: "Users to remove (comma-sep)",
-                value: members.join(", "),
-            }],
+            fields: vec![Field::with_value(
+                "Users to remove (comma-sep)",
+                members.join(", "),
+            )],
             ..Modal::default()
         }
     }
@@ -294,6 +322,7 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
         ),
         Some(ModalKind::AddGroups(user)) => (&format!("Add Groups — {user}")[..], false),
         Some(ModalKind::SetExpiry(user)) => (&format!("Set Expiry — {user}")[..], false),
+        Some(ModalKind::SetPassword(user)) => (&format!("Set Password — {user}")[..], false),
         Some(ModalKind::CreateGroup) => ("Create Group", false),
         Some(ModalKind::RenameGroup(group)) => (&format!("Rename Group — {group}")[..], false),
         Some(ModalKind::ConfirmDeleteGroup(group)) => {
@@ -339,18 +368,31 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
         };
         // Render caret inside the value on the focused field.
         if focused {
+            let char_count = field.value.chars().count();
+            let display_chars: Vec<char> = if field.masked {
+                vec!['•'; char_count]
+            } else {
+                field.value.chars().collect()
+            };
             let col = modal.cursor_col.min(field.value.len());
-            let (before, after) = field.value.split_at(col);
+            let chars_before = field.value[..col].chars().count();
+            let before: String = display_chars[..chars_before].iter().collect();
+            let after: String = display_chars[chars_before..].iter().collect();
             lines.push(Line::from(vec![
                 label,
-                Span::raw(before.to_string()),
+                Span::raw(before),
                 Span::styled("▏", crate::ui::theme::accent()),
-                Span::styled(after.to_string(), value_style),
+                Span::styled(after, value_style),
             ]));
         } else {
+            let display_str: String = if field.masked {
+                "•".repeat(field.value.chars().count())
+            } else {
+                field.value.clone()
+            };
             lines.push(Line::from(vec![
                 label,
-                Span::styled(field.value.clone(), value_style),
+                Span::styled(display_str, value_style),
             ]));
         }
     }
@@ -388,12 +430,23 @@ mod tests {
     }
 
     #[test]
-    fn create_user_form_has_five_fields() {
+    fn create_user_form_has_six_fields() {
         let m = form();
         assert!(m.is_open());
         assert_eq!(m.kind, Some(ModalKind::CreateUser));
-        assert_eq!(m.fields.len(), 5);
+        assert_eq!(m.fields.len(), 6);
+        assert!(m.fields[5].masked);
         assert_eq!(m.cursor_field, 0);
+    }
+
+    #[test]
+    fn set_password_form_has_two_masked_fields() {
+        let m = Modal::set_password("alice".into());
+        assert!(m.is_open());
+        assert_eq!(m.kind, Some(ModalKind::SetPassword("alice".into())));
+        assert_eq!(m.fields.len(), 2);
+        assert!(m.fields[0].masked);
+        assert!(m.fields[1].masked);
     }
 
     #[test]

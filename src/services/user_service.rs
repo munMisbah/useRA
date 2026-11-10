@@ -162,6 +162,30 @@ fn lock_impl(name: &str, lock: bool) -> OpResult {
     }
 }
 
+/// Sets a user's password using `chpasswd`.
+///
+/// Password is piped via stdin and never appears in command-line arguments
+/// or audit logs.
+pub fn set_password(name: &str, password: &str) -> OpResult {
+    if let Err(msg) = validate_username(name) {
+        return OpResult::failure(format!("invalid username: {msg}"));
+    }
+    if password.is_empty() {
+        return OpResult::failure("password cannot be empty".to_string());
+    }
+    if password.contains('\n') || password.contains('\r') {
+        return OpResult::failure("password cannot contain newlines".to_string());
+    }
+    let input = format!("{name}:{password}\n");
+    match command::run_with_stdin("chpasswd", &[], &input) {
+        Err(err) => command_error("set password", name, err),
+        Ok(output) if output.status.success() => {
+            OpResult::success(format!("password set for {name}"))
+        }
+        Ok(output) => status_error("set password", name, &output),
+    }
+}
+
 /// Changes a user's login shell (`usermod -s`).
 pub fn set_shell(name: &str, shell: &str) -> OpResult {
     if !shell.starts_with('/') {
@@ -362,5 +386,20 @@ mod tests {
 
         let res2 = delete_user("no-such-user-xyz", false);
         assert!(!res2.ok);
+    }
+
+    #[test]
+    fn set_password_validates_input() {
+        let res = set_password("invalid user!", "secret");
+        assert!(!res.ok);
+        assert!(res.message.contains("invalid username"));
+
+        let res = set_password("alice", "");
+        assert!(!res.ok);
+        assert!(res.message.contains("cannot be empty"));
+
+        let res = set_password("alice", "bad\npass");
+        assert!(!res.ok);
+        assert!(res.message.contains("newlines"));
     }
 }

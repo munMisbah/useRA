@@ -37,6 +37,26 @@ pub fn run(program: &str, args: &[&str]) -> Result<Output, AppError> {
         .map_err(|e| AppError::Io(format!("failed to run {program}: {e}")))
 }
 
+/// Runs a command with arguments and writes `input` to its standard input.
+pub fn run_with_stdin(program: &str, args: &[&str], input: &str) -> Result<Output, AppError> {
+    use std::io::Write;
+    let mut child = Command::new(resolve(program))
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| AppError::Io(format!("failed to run {program}: {e}")))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(input.as_bytes());
+    }
+
+    child
+        .wait_with_output()
+        .map_err(|e| AppError::Io(format!("failed to wait on {program}: {e}")))
+}
+
 /// Returns trimmed stdout of a successful run, or `None` on spawn
 /// failure or non-zero exit.
 pub fn run_trimmed(program: &str, args: &[&str]) -> Option<String> {
@@ -61,6 +81,13 @@ mod tests {
         let out = run("echo", &["hello", "world"]).expect("echo exists");
         assert!(out.status.success());
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hello world");
+    }
+
+    #[test]
+    fn runs_binary_with_stdin_pipe() {
+        let out = run_with_stdin("cat", &[], "piped content\n").expect("cat exists");
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "piped content\n");
     }
 
     #[test]

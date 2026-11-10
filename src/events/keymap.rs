@@ -79,6 +79,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     KeyCode::Enter => {}
                     // Operation keys on the Users page.
                     KeyCode::Char('a' | 'A') if user_page => open_create_user(app),
+                    KeyCode::Char('p' | 'P') if user_page => open_set_password(app),
                     KeyCode::Char('e' | 'E') if user_page => open_edit_shell(app),
                     KeyCode::Char('d' | 'D') if user_page => open_delete_confirm(app),
                     KeyCode::Char('l' | 'L') if user_page => open_lock_confirm(app),
@@ -145,6 +146,15 @@ fn handle_search_key(app: &mut App, key: KeyEvent) {
 
 fn open_create_user(app: &mut App) {
     app.modal = form_modal::Modal::create_user();
+}
+
+fn open_set_password(app: &mut App) {
+    if let Some(user) = app.selected_user() {
+        let name = user.name.clone();
+        app.modal = form_modal::Modal::set_password(name);
+    } else {
+        app.notify(false, "no user selected");
+    }
 }
 
 fn open_edit_shell(app: &mut App) {
@@ -285,6 +295,20 @@ fn submit_modal(app: &mut App) {
 
     match kind {
         ModalKind::CreateUser => submit_create_user(app),
+        ModalKind::SetPassword(user) => {
+            let pw = app.modal.fields[0].value.clone();
+            let confirm = app.modal.fields[1].value.clone();
+            if pw != confirm {
+                app.modal.error = Some("passwords do not match".to_string());
+                return;
+            }
+            if pw.is_empty() {
+                app.modal.error = Some("password cannot be empty".to_string());
+                return;
+            }
+            let res = crate::services::user_service::set_password(&user, &pw);
+            audit_and_finish(app, "set_password", &user, res);
+        }
         ModalKind::EditShell(user) => {
             let shell = app.modal.fields[0].value.trim().to_string();
             let res = crate::services::user_service::set_shell(&user, &shell);
@@ -479,20 +503,40 @@ fn submit_create_user(app: &mut App) {
     };
 
     let res = crate::services::user_service::create_user(&name, gecos_opt, home_opt, shell, true);
-    if res.ok && !groups.is_empty() {
-        // Supplementary groups right after creation.
-        let list: Vec<&str> = groups
-            .split(',')
-            .map(|g| g.trim())
-            .filter(|g| !g.is_empty())
-            .collect();
-        if !list.is_empty() {
-            let res2 = crate::services::user_service::add_to_groups(&name, &list);
-            if !res2.ok {
+    if res.ok {
+        if !groups.is_empty() {
+            // Supplementary groups right after creation.
+            let list: Vec<&str> = groups
+                .split(',')
+                .map(|g| g.trim())
+                .filter(|g| !g.is_empty())
+                .collect();
+            if !list.is_empty() {
+                let res2 = crate::services::user_service::add_to_groups(&name, &list);
+                if !res2.ok {
+                    app.modal.close();
+                    app.notify(
+                        false,
+                        format!("user created, but groups failed: {}", res2.message),
+                    );
+                    app.reload();
+                    return;
+                }
+            }
+        }
+        let password = app
+            .modal
+            .fields
+            .get(5)
+            .map(|f| f.value.clone())
+            .unwrap_or_default();
+        if !password.is_empty() {
+            let res_pw = crate::services::user_service::set_password(&name, &password);
+            if !res_pw.ok {
                 app.modal.close();
                 app.notify(
                     false,
-                    format!("user created, but groups failed: {}", res2.message),
+                    format!("user created, but password failed: {}", res_pw.message),
                 );
                 app.reload();
                 return;
@@ -727,5 +771,26 @@ mod tests {
         app.page = Page::Sessions;
         handle_key(&mut app, key_press(KeyCode::Char('/')));
         assert!(app.search_active);
+    }
+
+    #[test]
+    fn p_key_opens_set_password_modal() {
+        let mut app = App::default();
+        app.page = Page::Users;
+        app.focus = Focus::Content;
+        app.reload();
+        assert!(!app.data.users.is_empty());
+
+        let selected_name = app.selected_user().unwrap().name.clone();
+        handle_key(&mut app, key_press(KeyCode::Char('p')));
+
+        assert!(app.modal.is_open());
+        assert_eq!(
+            app.modal.kind,
+            Some(form_modal::ModalKind::SetPassword(selected_name))
+        );
+        assert_eq!(app.modal.fields.len(), 2);
+        assert!(app.modal.fields[0].masked);
+        assert!(app.modal.fields[1].masked);
     }
 }

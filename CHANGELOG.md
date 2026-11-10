@@ -19,6 +19,14 @@ tar -czf usera-linux-x86_64.tar.gz -C target/release usera
 sha256sum usera-linux-x86_64.tar.gz > usera-linux-x86_64.tar.gz.sha256
 ```
 
+## [1.0.3] — 2026-11-10
+
+### Added
+
+- Masked password field (optional) in Create User (`A`) modal.
+- Set/change password shortcut (`P`) on the Users page with confirmation
+  field, piped safely to `chpasswd` via stdin (never logged or exposed).
+
 ## [1.0.0] — 2026-11-09
 
 Initial release. Full user and group management for Debian with an

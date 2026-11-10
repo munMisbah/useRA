@@ -70,7 +70,7 @@ The application will require appropriate root privileges for administrative oper
 
 ## Development Status
 
-**Current release: 1.0.0** — all roadmap phases complete.
+**Current release: 1.0.3** — all roadmap phases complete.
 
 1. ~~Establish the Rust project.~~ (Phase 0)
 2. ~~Implement the Ratatui terminal interface.~~ (Phase 1)
@@ -85,7 +85,8 @@ The application will require appropriate root privileges for administrative oper
 
 | Key | Action |
 | --- | --- |
-| A | Create user (form: username, full name, home, shell, groups) |
+| A | Create user (form: username, full name, home, shell, groups, optional password) |
+| P | Set / change password of selected user |
 | E | Change login shell of selected user |
 | L | Lock account (confirm with YES) |
 | U | Unlock account (confirm with YES) |
