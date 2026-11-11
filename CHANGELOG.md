@@ -19,6 +19,61 @@ tar -czf usera-linux-x86_64.tar.gz -C target/release usera
 sha256sum usera-linux-x86_64.tar.gz > usera-linux-x86_64.tar.gz.sha256
 ```
 
+## [1.1.0] — 2026-11-11
+
+### Added
+
+- **Hybrid Resource & Permission Manager**:
+  - Dedicated `Resources` page (`Name | Mode | Owner` browser, `/` live filter,
+    right-hand `Details & ACL` panel).
+  - Contextual Hybrid layout on `Users` & `Groups` (auto-enabled on
+    `>= 105x24` terminals, toggleable with `F`): `Resources` browser on the
+    right with compact `Details` + live POSIX.1e `Effective for '<name>'`
+    evaluation underneath.
+  - Interactive `chmod` checkbox grid (`M`) covering Owner/Group/Other `r/w/x`
+    plus Special bits (`SUID`, `SGID`, `Sticky`) and recursive (`-R`).
+  - Interactive `Set ACL` modal (`A`) with Scope selector (`User / Group / Mask /
+    Other`), 1+ char type-to-filter autocomplete (`Tab` complete), `r/w/x`
+    checkboxes, `Default ACL (d:)`, and recursive (`-R`).
+  - `Remove ACL` checklist (`X`) populated directly from active `getfacl` entries
+    (supporting multi-entry `-x` and default ACL clear `-k`).
+  - `Clear ACLs` (`B`, `setfacl -b`), `chown` (`O`), direct path jump (`G`),
+    selected user home jump (`H` in Hybrid mode), and dotfiles toggle (`.`).
+  - Batch `+` ACL indicators across directory rows via `getfacl -s -p -P`.
+  - Safety gates for recursive (`-R`) operations: refuses protected OS root
+    paths (`/`, `/etc`, `/usr`, `/var`, etc.) and requires item-count preview +
+    explicit `YES` confirmation.
+- **Live Search & List Scrolling**:
+  - Interactive `/` search filtering on `Users`, `Groups`, `Sessions`, and
+    `Resources`.
+  - Stateful table scrolling (`TableState` + vertical `Scrollbar`) on all
+    list views.
+- **CLI Self-Updater & Flags**:
+  - Direct version-aware `usera update` (`src/system/updater.rs`): checks
+    latest release tag before downloading, verifies SHA-256 on version-pinned
+    artifacts, and replaces the binary atomically without piping remote
+    scripts into `bash -s`.
+  - `--version` / `-v` and `--help` / `-h` CLI flags.
+
+### Changed
+
+- Redesigned borderless left sidebar, removed top status strip, added outer
+  padding, and updated dark theme palette (`#141414` / `#332c27` / `#F56A00`).
+- Replaced `USER` / `USERS` icons with Nerd Font v3 `fa-user` (`\u{f007}`) and
+  `fa-users` (`\u{f0c0}`).
+- Fixed `Left` arrow focus movement (`previous_focus`) and `install.sh` hang
+  when updating over older binaries without `--version`.
+
+### Security
+
+- Enforced explicit permissions on audit directory (`0750`) and `audit.log`
+  (`0600`) with symlink guards (`symlink_metadata`).
+- Fixed partial-operation audit logging in `submit_create_user` so `create_user`,
+  `add_to_groups`, and `set_password` outcomes are all recorded.
+- Added absolute path checks for `home` & `shell` in `create_user`, `--`
+  separators across `user_service` and `group_service`, and strict input
+  validators for modes, owners, and ACL specs.
+
 ## [1.0.3] — 2026-11-10
 
 ### Added

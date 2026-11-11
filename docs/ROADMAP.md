@@ -142,6 +142,20 @@ Status: Completed (2026-11-09)
 
 Acceptance criteria: met.
 
+## Phase 7 — Resource Manager, POSIX ACLs & Hardening (v1.1.0)
+
+Status: Completed (2026-11-11)
+
+- [x] Live `/` search on list pages (`Users`, `Groups`, `Sessions`, `Resources`).
+- [x] Stateful `TableState` scrolling + scrollbar and fixed `Left` arrow focus.
+- [x] Password support (`P` shortcut + optional masked field in Create User) piped via `chpasswd` stdin.
+- [x] Direct version-aware `usera update` (`system/updater.rs`), `--version`, `--help`.
+- [x] Audit log permission hardening (`0750` dir / `0600` file, symlink guard) and per-step create-user audit trail.
+- [x] Hybrid Resource Manager (`Page::Resources` + contextual right split + bottom `Details` on wide `Users`/`Groups`).
+- [x] Interactive `chmod` checkbox grid (`r/w/x` + `SUID/SGID/Sticky`), guided `Set ACL` (`Scope` + 1+ char autocomplete + `r/w/x` + `d:`), `Remove ACL` checklist (`-x`/`-k`), `chown`, batch `+` badge, `H` home jump, `.` dotfiles toggle, and recursive protected-path + `YES` confirmation gates.
+
+Acceptance criteria: met (104 unit, layout, and PTY smoke tests passing).
+
 ---
 
 ## Development Policy

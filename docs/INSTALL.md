@@ -13,6 +13,7 @@ x86-64. Other distributions may work but are untested.
 | C compiler + linker | `sudo apt install build-essential` | same |
 | Terminal with UTF-8 | default | default |
 | Nerd Font (icons) | see [Nerd Font](#nerd-font-requirement) | same |
+| `acl` (`getfacl`/`setfacl`, optional) | `sudo apt install acl` (for POSIX ACLs) | same |
 
 ### Build
 
@@ -76,9 +77,11 @@ appearance settings.
 usera
 ```
 
-- Without root: full read-only inspection (users, groups, sessions).
-- With `sudo`: adds user/group management operations (see README
-  shortcuts tables). Write operations are refused without root.
+- Without root: full read-only inspection (users, groups, sessions,
+  files/ACLs).
+- With `sudo`: adds user/group, password, permission, and POSIX ACL
+  management operations (see README shortcuts tables). Write operations
+  are refused without root.
 - Audit log: `/var/log/usera/audit.log` (root) or
   `$XDG_STATE_HOME/usera/audit.log`.
 

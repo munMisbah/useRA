@@ -1,0 +1,126 @@
+<svg viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" font-family="'DejaVu Sans Mono', 'JetBrainsMono Nerd Font', monospace" font-size="13">
+  <!-- Terminal Window Frame -->
+  <rect x="8" y="8" width="944" height="504" rx="12" fill="#141414" stroke="#332c27" stroke-width="2"/>
+  <!-- Titlebar -->
+  <path d="M 8 20 Q 8 8 20 8 L 940 8 Q 952 8 952 20 L 952 40 L 8 40 Z" fill="#1d1c1b"/>
+  <line x1="8" y1="40" x2="952" y2="40" stroke="#332c27" stroke-width="1"/>
+  <circle cx="30" cy="24" r="6" fill="#e06c75"/>
+  <circle cx="50" cy="24" r="6" fill="#FBBF24"/>
+  <circle cx="70" cy="24" r="6" fill="#34D399"/>
+  <text x="480" y="29" text-anchor="middle" fill="#8793a1" font-size="12">sudo usera — Debian GNU/Linux 13 (trixie)</text>
+
+  <!-- Borderless Left Sidebar -->
+  <text x="30" y="76" fill="#F56A00" font-weight="bold" font-size="14">&gt;_ useRA</text>
+  <text x="30" y="110" fill="#8793a1">   Dashboard</text>
+  <text x="30" y="136" fill="#F56A00" font-weight="bold"> &gt; Users</text>
+  <text x="30" y="162" fill="#8793a1">   Groups</text>
+  <text x="30" y="188" fill="#8793a1">   Sessions</text>
+  <text x="30" y="214" fill="#8793a1">   Resources</text>
+  <text x="30" y="240" fill="#8793a1">   Settings</text>
+
+  <text x="30" y="424" fill="#8793a1"> ─ Host</text>
+  <circle cx="42" cy="443" r="4" fill="#34D399"/>
+  <text x="52" y="447" fill="#bac4cf">wagynas</text>
+  <text x="114" y="447" fill="#8793a1">(root)</text>
+
+  <!-- Center Panel: Users (Focused) -->
+  <rect x="176" y="54" width="350" height="284" rx="7" fill="none" stroke="#F56A00" stroke-width="1.5"/>
+  <rect x="188" y="46" width="60" height="16" fill="#141414"/>
+  <text x="194" y="59" fill="#bac4cf" font-weight="bold">Users</text>
+
+  <!-- Search bar -->
+  <circle cx="196" cy="79" r="4.5" fill="none" stroke="#34D399" stroke-width="1.5"/>
+  <line x1="199.5" y1="82.5" x2="203" y2="86" stroke="#34D399" stroke-width="1.5"/>
+  <text x="210" y="83" fill="#8793a1">(/) Type something</text>
+
+  <!-- Users Table Header -->
+  <text x="192" y="109" fill="#bac4cf" font-weight="bold">Name</text>
+  <text x="348" y="109" fill="#bac4cf" font-weight="bold">ID</text>
+  <text x="424" y="109" fill="#bac4cf" font-weight="bold">Info</text>
+
+  <!-- Selected Row -->
+  <rect x="184" y="118" width="330" height="24" rx="3" fill="#332c27"/>
+  <text x="192" y="135" fill="#bac4cf" font-weight="bold">deploy</text>
+  <text x="348" y="135" fill="#bac4cf" font-weight="bold">1001</text>
+  <text x="424" y="135" fill="#bac4cf" font-weight="bold">Regular</text>
+
+  <text x="192" y="160" fill="#bac4cf">alice</text>
+  <text x="348" y="160" fill="#bac4cf">1002</text>
+  <text x="424" y="160" fill="#bac4cf">Regular</text>
+
+  <text x="192" y="185" fill="#8793a1">root</text>
+  <text x="348" y="185" fill="#8793a1">0</text>
+  <text x="424" y="185" fill="#8793a1">System</text>
+
+  <text x="192" y="210" fill="#8793a1">www-data</text>
+  <text x="348" y="210" fill="#8793a1">33</text>
+  <text x="424" y="210" fill="#8793a1">System</text>
+
+  <text x="192" y="235" fill="#8793a1">postgres</text>
+  <text x="348" y="235" fill="#8793a1">108</text>
+  <text x="424" y="235" fill="#8793a1">System</text>
+
+  <!-- Scrollbar thumb -->
+  <rect x="517" y="118" width="3" height="60" rx="1.5" fill="#8793a1"/>
+
+  <!-- Right Panel: Hybrid Resources (ACL: deploy) -->
+  <rect x="538" y="54" width="398" height="284" rx="7" fill="none" stroke="#8793a1" stroke-width="1.2"/>
+  <rect x="550" y="46" width="194" height="16" fill="#141414"/>
+  <text x="556" y="59" fill="#bac4cf" font-weight="bold">Resources (ACL: deploy)</text>
+  <path d="M 552 74 h 6 l 2 2 h 6 v 8 h -14 z" fill="#F56A00"/>
+  <text x="572" y="83" fill="#bac4cf" font-weight="bold">/var/www</text>
+  <text x="646" y="83" fill="#8793a1">[.*]</text>
+
+  <!-- Resources Table Header -->
+  <text x="552" y="109" fill="#bac4cf" font-weight="bold">Name</text>
+  <text x="700" y="109" fill="#bac4cf" font-weight="bold">Mode</text>
+  <text x="786" y="109" fill="#bac4cf" font-weight="bold">Owner</text>
+
+  <!-- Selected Resource Row -->
+  <text x="552" y="135" fill="#bac4cf">..</text>
+  <text x="700" y="135" fill="#8793a1">&lt;up&gt;</text>
+
+  <rect x="546" y="143" width="382" height="24" rx="3" fill="#282420"/>
+  <path d="M 552 151 h 5 l 2 2 h 5 v 7 h -12 z" fill="#F56A00"/>
+  <text x="570" y="160" fill="#bac4cf" font-weight="bold">app</text>
+  <text x="700" y="160" fill="#34D399" font-weight="bold">0750+</text>
+  <text x="786" y="160" fill="#bac4cf">root:www-data</text>
+
+  <path d="M 552 176 h 5 l 2 2 h 5 v 7 h -12 z" fill="#8793a1"/>
+  <text x="570" y="185" fill="#bac4cf">uploads</text>
+  <text x="700" y="185" fill="#34D399">2775+</text>
+  <text x="786" y="185" fill="#bac4cf">deploy:devs</text>
+
+  <rect x="553" y="201" width="9" height="11" rx="1" fill="none" stroke="#8793a1" stroke-width="1.2"/>
+  <text x="570" y="210" fill="#bac4cf">.env</text>
+  <text x="700" y="210" fill="#bac4cf">0600</text>
+  <text x="786" y="210" fill="#bac4cf">root:root</text>
+
+  <path d="M 552 226 h 5 l 2 2 h 5 v 7 h -12 z" fill="#8793a1"/>
+  <text x="570" y="235" fill="#bac4cf">logs</text>
+  <text x="700" y="235" fill="#bac4cf">0750</text>
+  <text x="786" y="235" fill="#bac4cf">syslog:adm</text>
+
+  <!-- Bottom Details Strip -->
+  <rect x="176" y="348" width="760" height="114" rx="7" fill="none" stroke="#8793a1" stroke-width="1.2"/>
+  <rect x="188" y="340" width="76" height="16" fill="#141414"/>
+  <text x="194" y="353" fill="#bac4cf" font-weight="bold">Details</text>
+
+  <text x="192" y="376" fill="#F56A00" font-weight="bold">User:</text>
+  <text x="236" y="376" fill="#bac4cf" font-weight="bold">deploy</text>
+  <text x="294" y="376" fill="#bac4cf">(UID 1001, GID 1001, Regular)  Shell: /bin/bash  Home: /home/deploy</text>
+
+  <text x="192" y="398" fill="#8793a1">Groups: sudo, www-data, devs</text>
+
+  <text x="192" y="420" fill="#F56A00" font-weight="bold">Path:</text>
+  <text x="236" y="420" fill="#bac4cf">/var/www/app</text>
+  <text x="358" y="420" fill="#8793a1">Mode: drwxr-x--- (0750+)  Owner: root:www-data</text>
+
+  <text x="192" y="442" fill="#8793a1">Effective for 'deploy':</text>
+  <text x="380" y="442" fill="#34D399" font-weight="bold">rwx (user ACL)</text>
+  <text x="502" y="442" fill="#8793a1">|  ACL: u:deploy:rwx, g:devs:r-x</text>
+
+  <!-- Footer Status Bar -->
+  <text x="30" y="492" fill="#F56A00" font-weight="bold">[CONTENT]</text>
+  <text x="112" y="492" fill="#8793a1" font-size="12">↑↓ Select  A Add  P Passwd  E Shell  L/U Lock/Unlock  G Groups  D Delete  F HideFiles  r Reload  ? Help  Q Quit</text>
+</svg>

@@ -23,12 +23,11 @@
 Fields:
 
 - Username.
-- Full name.
-- Home directory.
-- Default shell.
-- Primary group.
-- Supplementary groups.
-- Home directory creation preference.
+- Full name (optional).
+- Home directory (optional, validated absolute path).
+- Default shell (validated absolute path).
+- Supplementary groups (optional).
+- Password (optional, masked, piped safely to `chpasswd`).
 
 ### Edit User
 
@@ -36,11 +35,11 @@ Allow modification of supported account properties.
 
 ### Account Security
 
+- Set / change password (`chpasswd` via stdin).
 - Lock account.
 - Unlock account.
 - Set account expiration.
 - Change default shell.
-
 ### Delete User
 
 Provide explicit confirmation.
@@ -67,15 +66,22 @@ Home directory removal must be an independent, clearly explained option and must
 
 Display currently available login sessions using system information.
 
+## 4a. Resource & POSIX ACL Management
+
+- Browse directories (`Resources` page and Hybrid contextual right panel on wide `Users`/`Groups` terminals).
+- Inspect Unix modes, ownership, symlinks, batch `+` ACL badges, and live POSIX.1e effective permissions.
+- Interactive `chmod` checkbox matrix (`r/w/x` + `SUID/SGID/Sticky`), `chown`, and guided `setfacl` (`-m`, `-x`, `-k`, `-b`) modals.
+- Recursive (`-R`) guard blocking protected OS root paths (`/`, `/etc`, `/usr`, `/var`, etc.) plus item-count preview and `YES` confirmation.
+- Toggle dotfiles (`.`), jump to path (`G`), and jump to selected user home (`H`).
+
 ## 5. Search
 
-Support searching:
+Support live `/` filtering on:
 
-- Usernames.
-- UIDs.
-- Group names.
-- GIDs.
-
+- Users (username, UID, full name, shell, account type).
+- Groups (group name, GID, members).
+- Sessions (user, session ID, seat).
+- Resources (entry name, owner, group, octal mode).
 ## 6. Notifications
 
 Provide clear feedback for:
