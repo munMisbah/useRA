@@ -157,9 +157,14 @@ fn render_browser(frame: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     }
 
     let chunks = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(area);
+    let dot_tag = if app.resources.show_hidden {
+        " [.*]"
+    } else {
+        " [no .*]"
+    };
     let cwd_text = shorten_path(
         &app.resources.cwd.display().to_string(),
-        area.width.saturating_sub(10) as usize,
+        area.width.saturating_sub(18) as usize,
     );
     let path_line = Line::from(vec![
         Span::styled(
@@ -167,9 +172,9 @@ fn render_browser(frame: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             crate::ui::theme::accent(),
         ),
         Span::styled(cwd_text, crate::ui::theme::title()),
+        Span::styled(dot_tag, crate::ui::theme::dim()),
     ]);
     frame.render_widget(Paragraph::new(path_line), chunks[0]);
-
     if let Some(err) = &app.resources.load_error {
         frame.render_widget(
             Paragraph::new(format!(" {err}")).style(crate::ui::theme::error()),
@@ -185,11 +190,12 @@ fn render_browser(frame: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         .into_iter()
         .enumerate()
         .map(|(idx, e)| {
-            let acl_suffix = if idx == selected_idx && selected_has_acl && !e.is_parent_link {
-                "+"
-            } else {
-                ""
-            };
+            let acl_suffix =
+                if (e.has_acl || (idx == selected_idx && selected_has_acl)) && !e.is_parent_link {
+                    "+"
+                } else {
+                    ""
+                };
             let mode_str = if e.is_parent_link {
                 "<up>".to_string()
             } else {

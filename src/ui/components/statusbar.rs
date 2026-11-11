@@ -114,7 +114,7 @@ fn hints(app: &App) -> Vec<Hint> {
                 });
             }
             if app.page == Page::Resources {
-                push_resource_hints(&mut hints, app.data.is_root);
+                push_resource_hints(&mut hints, app.data.is_root, false);
             }
         }
         Focus::Details => {
@@ -123,7 +123,7 @@ fn hints(app: &App) -> Vec<Hint> {
                     key: "↑↓",
                     label: "Select",
                 });
-                push_resource_hints(&mut hints, app.data.is_root);
+                push_resource_hints(&mut hints, app.data.is_root, app.page == Page::Users);
                 hints.push(Hint {
                     key: "F",
                     label: "HideFiles",
@@ -146,7 +146,7 @@ fn hints(app: &App) -> Vec<Hint> {
     hints
 }
 
-fn push_resource_hints(hints: &mut Vec<Hint>, is_root: bool) {
+fn push_resource_hints(hints: &mut Vec<Hint>, is_root: bool, show_home_jump: bool) {
     hints.push(Hint {
         key: "Enter/⌫",
         label: "Nav",
@@ -154,6 +154,16 @@ fn push_resource_hints(hints: &mut Vec<Hint>, is_root: bool) {
     hints.push(Hint {
         key: "G",
         label: "Path",
+    });
+    if show_home_jump {
+        hints.push(Hint {
+            key: "H",
+            label: "Home",
+        });
+    }
+    hints.push(Hint {
+        key: ".",
+        label: "Dots",
     });
     if is_root {
         hints.push(Hint {

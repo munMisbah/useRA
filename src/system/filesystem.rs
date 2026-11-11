@@ -70,6 +70,7 @@ pub fn list_dir(
             size: meta.size(),
             is_parent_link: false,
             symlink_target,
+            has_acl: false,
         };
 
         if kind == EntryKind::Directory {
@@ -79,9 +80,20 @@ pub fn list_dir(
         }
     }
 
+    let all_paths: Vec<PathBuf> = dirs
+        .iter()
+        .chain(others.iter())
+        .map(|e| e.path.clone())
+        .collect();
+    if all_paths.len() <= 1000 {
+        let acl_paths = crate::system::acl::paths_with_acl(&all_paths);
+        for entry in dirs.iter_mut().chain(others.iter_mut()) {
+            entry.has_acl = acl_paths.contains(&entry.path);
+        }
+    }
+
     dirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     others.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-
     let mut result = Vec::with_capacity(1 + dirs.len() + others.len());
     if let Some(parent) = dir.parent() {
         let meta = fs::symlink_metadata(parent).ok();
@@ -99,6 +111,7 @@ pub fn list_dir(
             size: 0,
             is_parent_link: true,
             symlink_target: None,
+            has_acl: false,
         });
     }
     result.extend(dirs);

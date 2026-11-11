@@ -110,22 +110,55 @@ pub fn set_acl(path: &Path, spec: &str, recursive: bool) -> OpResult {
     }
 }
 
-/// Removes a specific POSIX ACL entry via `setfacl -x`.
-pub fn remove_acl(path: &Path, spec: &str, recursive: bool) -> OpResult {
-    let valid = match validate_acl_remove_spec(spec) {
-        Ok(s) => s,
-        Err(msg) => return OpResult::failure(format!("invalid ACL target: {msg}")),
-    };
+/// Removes one or more specific ACL entries and/or clears all default ACLs (`-k`).
+pub fn remove_acl_many(
+    path: &Path,
+    specs: &[String],
+    clear_default: bool,
+    recursive: bool,
+) -> OpResult {
+    if specs.is_empty() && !clear_default {
+        return OpResult::failure("select at least one ACL entry".to_string());
+    }
+    let mut valid_specs = Vec::with_capacity(specs.len());
+    for s in specs {
+        match validate_acl_remove_spec(s) {
+            Ok(v) => valid_specs.push(v),
+            Err(msg) => return OpResult::failure(format!("invalid ACL target: {msg}")),
+        }
+    }
     if recursive {
         if let Err(res) = guard_recursive_path(path) {
             return res;
         }
     }
+
     let target = path.display().to_string();
-    match acl::remove_acl(path, &valid, recursive) {
-        Ok(()) => OpResult::success(format!("ACL '{valid}' removed from {target}")),
-        Err(err) => acl_error("remove ACL", &target, err),
+    if !valid_specs.is_empty() {
+        let joined = valid_specs.join(",");
+        if let Err(err) = acl::remove_acl(path, &joined, recursive) {
+            return acl_error("remove ACL", &target, err);
+        }
     }
+    if clear_default {
+        if let Err(err) = acl::clear_default_acl(path, recursive) {
+            return acl_error("clear default ACLs", &target, err);
+        }
+    }
+
+    let summary = match (!valid_specs.is_empty(), clear_default) {
+        (true, true) => format!(
+            "removed {} and cleared default ACLs",
+            valid_specs.join(", ")
+        ),
+        (true, false) => format!("removed ACL {}", valid_specs.join(", ")),
+        (false, true) => "cleared default ACLs".to_string(),
+        (false, false) => unreachable!(),
+    };
+    OpResult::success(format!(
+        "{summary} on {target}{}",
+        if recursive { " (recursive)" } else { "" }
+    ))
 }
 
 /// Strips all extended ACL entries via `setfacl -b`.
@@ -186,6 +219,7 @@ mod tests {
         assert!(!set_mode(Path::new("/tmp/x"), "-R", false).ok);
         assert!(!set_owner(Path::new("/tmp/x"), "bad owner", false).ok);
         assert!(!set_acl(Path::new("/tmp/x"), "bad-acl", false).ok);
-        assert!(!remove_acl(Path::new("/tmp/x"), "u:alice:rwx", false).ok);
+        assert!(!remove_acl_many(Path::new("/tmp/x"), &["u:alice:rwx".into()], false, false).ok);
+        assert!(!remove_acl_many(Path::new("/tmp/x"), &[], false, false).ok);
     }
 }

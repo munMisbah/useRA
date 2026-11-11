@@ -35,6 +35,8 @@ pub struct ResourceEntry {
     pub size: u64,
     /// Whether this row is the synthetic `..` parent entry.
     pub is_parent_link: bool,
+    /// Whether this entry carries extended POSIX ACLs (`+` badge).
+    pub has_acl: bool,
     /// Symlink target path string if this entry is a symlink.
     pub symlink_target: Option<String>,
 }
@@ -610,6 +612,7 @@ mod tests {
             size: 4096,
             is_parent_link: false,
             symlink_target: None,
+            has_acl: false,
         };
         assert_eq!(dir.mode_octal(), "2750");
         assert_eq!(dir.mode_rwx(), "drwxr-s---");
@@ -663,6 +666,7 @@ mod tests {
             size: 4096,
             is_parent_link: false,
             symlink_target: None,
+            has_acl: true,
         };
         let acl = AclInfo {
             available: true,

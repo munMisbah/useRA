@@ -110,11 +110,11 @@ The application will require appropriate root privileges for administrative oper
 | --- | --- |
 | F | Toggle contextual Resources panel on Users/Groups (`>= 105x24` terminals) |
 | Enter / ⌫ | Open directory / go to parent directory |
-| G | Jump to directory path |
-| M | Change permissions (`chmod`, with optional recursive `YES` gate) |
+| G / H / . | Jump to path / jump to user home (Hybrid) / toggle dotfiles |
+| M | Change permissions (`chmod` checkbox grid incl. SUID/SGID/Sticky, optional recursive `YES` gate) |
 | O | Change owner/group (`chown`, with optional recursive `YES` gate) |
-| A | Set/modify POSIX ACL entry (`setfacl -m`, auto-prefilled in Hybrid mode) |
-| X | Remove POSIX ACL entry (`setfacl -x`) |
+| A | Set/modify POSIX ACL (`setfacl -m` Scope selector, 1+ char autocomplete, `r/w/x`, Default `d:`) |
+| X | Remove POSIX ACLs (`setfacl -x`/`-k` checklist from active entries) |
 | B | Clear all extended POSIX ACL entries (`setfacl -b`, confirm with `YES`) |
 
 ### Security model

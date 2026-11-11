@@ -125,6 +125,8 @@ pub struct ResourceState {
     pub load_error: Option<String>,
     /// Whether the contextual right-side Resource panel is enabled on Users/Groups.
     pub hybrid_panel: bool,
+    /// Whether dotfiles (`.`-prefixed entries) are shown in the Resource browser.
+    pub show_hidden: bool,
 }
 
 impl Default for ResourceState {
@@ -137,6 +139,7 @@ impl Default for ResourceState {
             selected_acl: AclInfo::default(),
             load_error: None,
             hybrid_panel: true,
+            show_hidden: true,
         }
     }
 }
@@ -380,24 +383,45 @@ impl App {
 
     /// Resource entries filtered by `search_query` only when on `Page::Resources`.
     pub fn active_resource_entries(&self) -> Vec<&ResourceEntry> {
-        if self.page != Page::Resources {
-            return self.resources.entries.iter().collect();
-        }
-        let q = self.search_query.trim().to_lowercase();
-        if q.is_empty() {
-            return self.resources.entries.iter().collect();
-        }
+        let show_hidden = self.resources.show_hidden;
+        let q = if self.page == Page::Resources {
+            self.search_query.trim().to_lowercase()
+        } else {
+            String::new()
+        };
         self.resources
             .entries
             .iter()
             .filter(|e| {
-                e.is_parent_link
-                    || e.name.to_lowercase().contains(&q)
-                    || e.owner_name.to_lowercase().contains(&q)
-                    || e.group_name.to_lowercase().contains(&q)
-                    || e.mode_octal().contains(&q)
+                if e.is_parent_link {
+                    return true;
+                }
+                if !show_hidden && e.name.starts_with('.') {
+                    return false;
+                }
+                if q.is_empty() {
+                    true
+                } else {
+                    e.name.to_lowercase().contains(&q)
+                        || e.owner_name.to_lowercase().contains(&q)
+                        || e.group_name.to_lowercase().contains(&q)
+                        || e.mode_octal().contains(&q)
+                }
             })
             .collect()
+    }
+
+    /// Toggles showing/hiding dotfiles in the Resource Manager and clamps selection.
+    pub fn toggle_hidden_resources(&mut self) {
+        self.resources.show_hidden = !self.resources.show_hidden;
+        let len = self.active_resource_entries().len();
+        self.resources.selected = self.resources.selected.min(len.saturating_sub(1));
+        self.resources.table.select(if len == 0 {
+            None
+        } else {
+            Some(self.resources.selected)
+        });
+        self.refresh_selected_acl();
     }
 
     /// Currently selected resource entry (if any).
