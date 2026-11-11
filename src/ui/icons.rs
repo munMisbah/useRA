@@ -7,9 +7,8 @@
 
 /// Dashboard icon.
 pub const DASHBOARD: &str = "\u{f0e4}"; // nf-oct-graph
-/// Users icon.
-pub const USERS: &str = "\u{eb5b}"; // nf-md-account-multiple
-/// Groups icon.
+/// Users icon (`nf-fa-users`).
+pub const USERS: &str = "\u{f0c0}"; // nf-fa-users
 pub const GROUPS: &str = "\u{e62a}"; // nf-fa-users
 /// Sessions icon.
 pub const SESSIONS: &str = "\u{f482}"; // nf-oct-device_desktop
@@ -20,9 +19,8 @@ pub const FILE: &str = "\u{f15b}"; // nf-fa-file
 pub const LINK: &str = "\u{f0c1}"; // nf-fa-link
 /// Settings icon.
 pub const SETTINGS: &str = "\u{e615}"; // nf-fa-cog
-/// User icon for detail headings.
-pub const USER: &str = "\u{eb5a}"; // nf-md-account
-/// Key icon for IDs.
+/// User icon (`nf-fa-user` person silhouette).
+pub const USER: &str = "\u{f007}"; // nf-fa-user
 pub const KEY: &str = "\u{f80f}"; // nf-fa-key
 /// Home icon.
 pub const HOME: &str = "\u{f015}"; // nf-fa-home
