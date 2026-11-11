@@ -64,6 +64,19 @@ Groups page (Content focus):
 | `R` | remove members (prefilled with current members) |
 | `D` | delete the selected group (type YES) |
 
+Users/Groups Hybrid panel (`F` toggles; auto-active when terminal >= 105x24) & `Resources` page:
+
+| Key | Action |
+| --- | --- |
+| `F` | toggle contextual Resources split on Users/Groups |
+| `Enter` / `⌫` | open directory / go to parent directory |
+| `G` | jump directly to a directory path |
+| `M` | change mode (`chmod`, optional recursive preview + YES) |
+| `O` | change owner/group (`chown`, optional recursive preview + YES) |
+| `A` | set POSIX ACL (`setfacl -m`, prefilled from selected user/group in Hybrid mode) |
+| `X` | remove POSIX ACL entry (`setfacl -x`) |
+| `B` | clear all extended ACLs (`setfacl -b`, type YES) |
+
 Inside a form: `Tab`/`Shift+Tab` or `↓`/`↑` move between fields,
 `←`/`→` move the text caret, `Backspace`/`Delete` edit, `Enter` submits,
 `Esc` cancels. Confirmation dialogs require typing exactly `YES`.
@@ -94,6 +107,14 @@ reported individually.
 
 Login sessions reported by `loginctl` (id, user, state). Gracefully
 empty on systems without systemd-logind.
+
+### Resources (Permission & POSIX ACL Manager)
+
+Browse directories, inspect Unix modes, ownership, and parsed POSIX ACLs
+(`getfacl -p`). On wide terminals (`>= 105x24`), Users and Groups also open
+a contextual Resources panel on the right with effective permissions shown
+in the Details strip below. Recursive (`-R`) mutations refuse protected OS
+root paths (`/`, `/etc`, `/usr`, `/var`, etc.) and require preview + `YES`.
 
 ### Settings
 

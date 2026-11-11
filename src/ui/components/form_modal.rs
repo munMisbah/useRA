@@ -33,6 +33,132 @@ pub enum ModalKind {
     GroupAddMembers(String),
     /// Remove users from a group (value = group name).
     GroupRemoveMembers(String),
+    /// Jump directory modal.
+    GoToPath,
+    /// Change mode (`chmod`) checkbox grid modal.
+    Chmod(ChmodState),
+    /// Change owner/group (`chown`) modal.
+    Chown { path: String, is_dir: bool },
+    /// Set POSIX ACL (`setfacl -m`) modal.
+    SetAcl { path: String, is_dir: bool },
+    /// Remove POSIX ACL (`setfacl -x`) modal.
+    RemoveAcl { path: String, is_dir: bool },
+    /// Clear all extended ACLs (`setfacl -b`) confirmation.
+    ConfirmClearAcl(String),
+    /// Explicit preview + YES confirmation for recursive (`-R`) resource mutations.
+    ConfirmRecursive(RecursiveOp),
+}
+
+/// Pending recursive operation awaiting explicit YES confirmation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecursiveOp {
+    Chmod { path: String, mode: String },
+    Chown { path: String, owner: String },
+    SetAcl { path: String, spec: String },
+    RemoveAcl { path: String, spec: String },
+}
+
+/// Interactive `r/w/x` permission checkbox state for `Owner / Group / Other`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChmodState {
+    pub path: String,
+    pub is_dir: bool,
+    /// Full 12-bit POSIX mode (`0o7777`); lower 9 bits toggled via checkboxes.
+    pub mode: u32,
+    /// Focused row: `0` = Owner, `1` = Group, `2` = Other, `3` = Recursive (when `is_dir`).
+    pub row: usize,
+    /// Focused permission column: `0` = Read, `1` = Write, `2` = Execute.
+    pub col: usize,
+    /// Whether `-R` is checked (only editable when `is_dir`).
+    pub recursive: bool,
+}
+
+impl ChmodState {
+    pub fn new(path: String, mode: u32, is_dir: bool) -> Self {
+        Self {
+            path,
+            is_dir,
+            mode: mode & 0o7777,
+            row: 0,
+            col: 0,
+            recursive: false,
+        }
+    }
+
+    fn row_count(&self) -> usize {
+        if self.is_dir {
+            4
+        } else {
+            3
+        }
+    }
+
+    fn bit_mask(row: usize, col: usize) -> u32 {
+        let shift = match row {
+            0 => 6,
+            1 => 3,
+            2 => 0,
+            _ => return 0,
+        };
+        let bit = match col {
+            0 => 0o4,
+            1 => 0o2,
+            2 => 0o1,
+            _ => return 0,
+        };
+        bit << shift
+    }
+
+    /// True if permission bit at `(row, col)` is currently enabled.
+    pub fn has_bit(&self, row: usize, col: usize) -> bool {
+        let mask = Self::bit_mask(row, col);
+        mask != 0 && (self.mode & mask) != 0
+    }
+
+    /// Toggles the currently focused checkbox (permission bit or Recursive).
+    pub fn toggle(&mut self) {
+        if self.row == 3 && self.is_dir {
+            self.recursive = !self.recursive;
+        } else {
+            self.mode ^= Self::bit_mask(self.row, self.col);
+        }
+    }
+
+    /// Jumps to `col` (`0=r, 1=w, 2=x`) on the active permission row and toggles it.
+    pub fn toggle_col(&mut self, col: usize) {
+        if self.row < 3 && col < 3 {
+            self.col = col;
+            self.mode ^= Self::bit_mask(self.row, col);
+        }
+    }
+
+    /// Moves row focus vertically, wrapping around.
+    pub fn move_row(&mut self, delta: isize) {
+        let len = self.row_count() as isize;
+        self.row = (self.row as isize + delta).rem_euclid(len) as usize;
+    }
+
+    /// Moves column focus horizontally (`Read <-> Write <-> Exec`), wrapping around.
+    pub fn move_col(&mut self, delta: isize) {
+        if self.row < 3 {
+            self.col = (self.col as isize + delta).rem_euclid(3) as usize;
+        }
+    }
+
+    /// Formatted 4-digit octal string (preserving any existing SUID/SGID/sticky bits).
+    pub fn octal_string(&self) -> String {
+        format!("{:04o}", self.mode & 0o7777)
+    }
+
+    /// Formatted 10-character `drwxr-x---` permission preview.
+    pub fn rwx_string(&self) -> String {
+        let kind = if self.is_dir {
+            crate::models::EntryKind::Directory
+        } else {
+            crate::models::EntryKind::File
+        };
+        crate::models::resource::format_mode_rwx(self.mode, kind)
+    }
 }
 
 /// One labeled text input with its current buffer.
@@ -194,6 +320,81 @@ impl Modal {
         }
     }
 
+    /// Opens the directory jump modal prefilled with `current`.
+    pub fn goto_path(current: &str) -> Self {
+        Modal {
+            kind: Some(ModalKind::GoToPath),
+            fields: vec![Field::with_value("Directory path", current)],
+            cursor_col: current.len(),
+            ..Modal::default()
+        }
+    }
+
+    /// Opens the interactive `chmod` checkbox modal initialized from `current_mode`.
+    pub fn chmod(path: String, current_mode: u32, is_dir: bool) -> Self {
+        Modal {
+            kind: Some(ModalKind::Chmod(ChmodState::new(
+                path,
+                current_mode,
+                is_dir,
+            ))),
+            ..Modal::default()
+        }
+    }
+
+    /// Opens the `chown` modal; directories include an optional recursive toggle.
+    pub fn chown(path: String, current_owner: &str, is_dir: bool) -> Self {
+        let mut fields = vec![Field::with_value("Owner[:Group]", current_owner)];
+        if is_dir {
+            fields.push(Field::new("Recursive? (yes/no)"));
+        }
+        Modal {
+            kind: Some(ModalKind::Chown { path, is_dir }),
+            cursor_col: current_owner.len(),
+            fields,
+            ..Modal::default()
+        }
+    }
+
+    /// Opens the `setfacl -m` modal (prefilled with contextual user/group in Hybrid mode).
+    pub fn set_acl(path: String, prefill: &str, is_dir: bool) -> Self {
+        let mut fields = vec![Field::with_value(
+            "ACL entry (u:user:rwx / g:grp:rx)",
+            prefill,
+        )];
+        if is_dir {
+            fields.push(Field::new("Recursive? (yes/no)"));
+        }
+        Modal {
+            kind: Some(ModalKind::SetAcl { path, is_dir }),
+            cursor_col: prefill.len(),
+            fields,
+            ..Modal::default()
+        }
+    }
+
+    /// Opens the `setfacl -x` modal.
+    pub fn remove_acl(path: String, prefill: &str, is_dir: bool) -> Self {
+        let mut fields = vec![Field::with_value(
+            "Remove ACL target (u:user / g:grp)",
+            prefill,
+        )];
+        if is_dir {
+            fields.push(Field::new("Recursive? (yes/no)"));
+        }
+        Modal {
+            kind: Some(ModalKind::RemoveAcl { path, is_dir }),
+            cursor_col: prefill.len(),
+            fields,
+            ..Modal::default()
+        }
+    }
+
+    /// Opens the recursive preview + YES confirmation dialog.
+    pub fn confirm_recursive(op: RecursiveOp, preview_msg: &str) -> Self {
+        Self::confirm(ModalKind::ConfirmRecursive(op), preview_msg)
+    }
+
     /// Whether a modal is open.
     pub fn is_open(&self) -> bool {
         self.kind.is_some()
@@ -332,13 +533,23 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
         Some(ModalKind::GroupRemoveMembers(group)) => {
             (&format!("Remove Members — {group}")[..], false)
         }
+        Some(ModalKind::GoToPath) => ("Go To Directory", false),
+        Some(ModalKind::Chmod(state)) => {
+            render_chmod(frame, modal, state, area);
+            return;
+        }
+        Some(ModalKind::Chown { path, .. }) => (&format!("Owner (chown) — {path}")[..], false),
+        Some(ModalKind::SetAcl { path, .. }) => (&format!("Set ACL — {path}")[..], false),
+        Some(ModalKind::RemoveAcl { path, .. }) => (&format!("Remove ACL — {path}")[..], false),
+        Some(ModalKind::ConfirmClearAcl(path)) => (&format!("Clear ACLs — {path}")[..], true),
+        Some(ModalKind::ConfirmRecursive(_)) => ("Confirm Recursive Operation", true),
         None => return,
     };
 
     // Size: message line (if any) + fields + hints, bordered.
     let msg_rows = if modal.error.is_some() { 2 } else { 0 };
     let height = (modal.fields.len() as u16 + msg_rows + 3).min(area.height.saturating_sub(2));
-    let width = 54_u16.min(area.width.saturating_sub(2));
+    let width = 64_u16.min(area.width.saturating_sub(2));
 
     let mut lines: Vec<Line> = Vec::new();
     if let Some(err) = &modal.error {
@@ -348,6 +559,8 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
                 ModalKind::ConfirmLock(_)
                     | ModalKind::ConfirmUnlock(_)
                     | ModalKind::ConfirmDelete { .. }
+                    | ModalKind::ConfirmClearAcl(_)
+                    | ModalKind::ConfirmRecursive(_)
             )
         }) {
             crate::ui::theme::warning()
@@ -410,12 +623,123 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
             if title.starts_with("Delete")
                 || title.starts_with("Lock")
                 || title.starts_with("Unlock")
+                || title.starts_with("Clear ACLs")
+                || title.starts_with("Confirm Recursive")
             {
                 crate::ui::theme::error()
             } else {
                 crate::ui::theme::border_focused()
             },
         );
+
+    frame.render_widget(Clear, box_area);
+    frame.render_widget(Paragraph::new(lines).block(block), box_area);
+}
+
+/// Renders the interactive 3x3 Read/Write/Execute checkbox matrix for `chmod`.
+fn render_chmod(frame: &mut Frame, modal: &Modal, state: &ChmodState, area: Rect) {
+    use ratatui::style::Styled;
+    use ratatui::text::{Line, Span};
+    use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+
+    let title = format!("Mode (chmod) — {}", state.path);
+    let mut lines: Vec<Line> = Vec::new();
+
+    if let Some(err) = &modal.error {
+        lines.push(Line::from(
+            format!(" {err}").set_style(crate::ui::theme::error()),
+        ));
+        lines.push(Line::from(""));
+    } else {
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(
+        "             Read (4)     Write (2)     Exec (1)".set_style(crate::ui::theme::dim()),
+    ));
+
+    for (row_idx, row_label) in ["Owner", "Group", "Other"].iter().enumerate() {
+        let row_focused = state.row == row_idx;
+        let prefix = if row_focused { "▸ " } else { "  " };
+        let label_style = if row_focused {
+            crate::ui::theme::title()
+        } else {
+            crate::ui::theme::dim()
+        };
+        let mut spans = vec![Span::styled(
+            format!("{prefix}{row_label:<8}   "),
+            label_style,
+        )];
+        for (col_idx, perm_char) in ['r', 'w', 'x'].iter().enumerate() {
+            let checked = state.has_bit(row_idx, col_idx);
+            let cell_focused = row_focused && state.col == col_idx;
+            let box_str = if checked {
+                format!("[x] {perm_char}")
+            } else {
+                format!("[ ] {perm_char}")
+            };
+            let style = if cell_focused {
+                crate::ui::theme::accent()
+            } else if checked {
+                crate::ui::theme::success()
+            } else {
+                crate::ui::theme::dim()
+            };
+            spans.push(Span::styled(box_str, style));
+            if col_idx < 2 {
+                spans.push(Span::raw("        "));
+            }
+        }
+        lines.push(Line::from(spans));
+    }
+
+    lines.push(Line::from(""));
+    let special_note = if state.mode & 0o7000 != 0 {
+        format!("   (special bits {:o} preserved)", (state.mode >> 9) & 0o7)
+    } else {
+        String::new()
+    };
+    lines.push(Line::from(vec![
+        Span::styled("  Octal: ", crate::ui::theme::dim()),
+        Span::styled(state.octal_string(), crate::ui::theme::title()),
+        Span::styled(
+            format!("  ({})", state.rwx_string()),
+            crate::ui::theme::base(),
+        ),
+        Span::styled(special_note, crate::ui::theme::warning()),
+    ]));
+
+    if state.is_dir {
+        let rec_focused = state.row == 3;
+        let prefix = if rec_focused { "▸ " } else { "  " };
+        let mark = if state.recursive { "[x]" } else { "[ ]" };
+        let style = if rec_focused {
+            crate::ui::theme::accent()
+        } else if state.recursive {
+            crate::ui::theme::warning()
+        } else {
+            crate::ui::theme::dim()
+        };
+        lines.push(Line::from(Span::styled(
+            format!("{prefix}{mark} Recursive (-R)"),
+            style,
+        )));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(
+        Line::from("  ↑↓/←→ move · Space or r/w/x toggle · Enter apply · Esc cancel")
+            .set_style(crate::ui::theme::dim()),
+    );
+
+    let width = 68_u16.min(area.width.saturating_sub(2));
+    let height = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
+    let box_area = super::modal::centered(area, width, height);
+    let block = Block::new()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .borders(Borders::ALL)
+        .title(format!(" {title} ").set_style(crate::ui::theme::title()))
+        .border_style(crate::ui::theme::border_focused());
 
     frame.render_widget(Clear, box_area);
     frame.render_widget(Paragraph::new(lines).block(block), box_area);
@@ -520,5 +844,50 @@ mod tests {
         // Unprivileged: userdel fails, exercising the failure path.
         let res = crate::services::user_service::delete_user("no-such-user-xyz", false);
         assert!(!res.ok);
+    }
+
+    #[test]
+    fn chmod_checkbox_grid_toggles_bits_and_preserves_special_bits() {
+        // SGID 0o2750 = drwxr-s---
+        let mut state = ChmodState::new("/srv/app".into(), 0o2750, true);
+        assert!(state.has_bit(0, 0)); // Owner r
+        assert!(state.has_bit(0, 1)); // Owner w
+        assert!(state.has_bit(0, 2)); // Owner x
+        assert!(state.has_bit(1, 0)); // Group r
+        assert!(!state.has_bit(1, 1)); // Group w off
+        assert!(state.has_bit(1, 2)); // Group x
+        assert!(!state.has_bit(2, 0)); // Other r off
+
+        // Move to Group Write and toggle on -> 0o2770
+        state.move_row(1);
+        state.move_col(1);
+        state.toggle();
+        assert_eq!(state.octal_string(), "2770");
+        assert_eq!(state.rwx_string(), "drwxrws---");
+
+        // Quick toggle Group Exec off via 'x' col (2) -> 0o2760
+        state.toggle_col(2);
+        assert_eq!(state.octal_string(), "2760");
+
+        // Move down to row 3 (Recursive) and toggle
+        state.move_row(2);
+        assert_eq!(state.row, 3);
+        state.toggle();
+        assert!(state.recursive);
+
+        // Files do not expose Recursive row (3 rows only)
+        let mut file_state = ChmodState::new("/srv/app/.env".into(), 0o0600, false);
+        file_state.move_row(-1);
+        assert_eq!(file_state.row, 2);
+    }
+
+    #[test]
+    fn chmod_checkbox_modal_renders_without_panic() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        let modal = Modal::chmod("/var/www/app".into(), 0o0750, true);
+        let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        term.draw(|frame| render(frame, &modal, frame.area()))
+            .unwrap();
     }
 }

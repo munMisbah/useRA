@@ -4,6 +4,7 @@
 
 pub mod app_data;
 pub mod group_service;
+pub mod resource_service;
 pub mod user_service;
 
 pub use app_data::AppData;

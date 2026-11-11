@@ -31,8 +31,10 @@ fn hints(app: &App) -> Vec<Hint> {
             });
         }
         Focus::Content => {
-            if matches!(app.page, Page::Users | Page::Groups | Page::Sessions)
-                && !list_is_empty(app)
+            if matches!(
+                app.page,
+                Page::Users | Page::Groups | Page::Sessions | Page::Resources
+            ) && !list_is_empty(app)
             {
                 hints.push(Hint {
                     key: "↑↓",
@@ -69,6 +71,16 @@ fn hints(app: &App) -> Vec<Hint> {
                     label: "Delete",
                 });
             }
+            if app.page == Page::Users {
+                hints.push(Hint {
+                    key: "F",
+                    label: if app.resources.hybrid_panel {
+                        "HideFiles"
+                    } else {
+                        "Files"
+                    },
+                });
+            }
             if app.page == Page::Groups && app.data.is_root {
                 hints.push(Hint {
                     key: "A",
@@ -91,8 +103,33 @@ fn hints(app: &App) -> Vec<Hint> {
                     label: "Delete",
                 });
             }
+            if app.page == Page::Groups {
+                hints.push(Hint {
+                    key: "F",
+                    label: if app.resources.hybrid_panel {
+                        "HideFiles"
+                    } else {
+                        "Files"
+                    },
+                });
+            }
+            if app.page == Page::Resources {
+                push_resource_hints(&mut hints, app.data.is_root);
+            }
         }
-        Focus::Details => {}
+        Focus::Details => {
+            if app.hybrid_active {
+                hints.push(Hint {
+                    key: "↑↓",
+                    label: "Select",
+                });
+                push_resource_hints(&mut hints, app.data.is_root);
+                hints.push(Hint {
+                    key: "F",
+                    label: "HideFiles",
+                });
+            }
+        }
     }
     hints.push(Hint {
         key: "r",
@@ -109,12 +146,38 @@ fn hints(app: &App) -> Vec<Hint> {
     hints
 }
 
+fn push_resource_hints(hints: &mut Vec<Hint>, is_root: bool) {
+    hints.push(Hint {
+        key: "Enter/⌫",
+        label: "Nav",
+    });
+    hints.push(Hint {
+        key: "G",
+        label: "Path",
+    });
+    if is_root {
+        hints.push(Hint {
+            key: "M",
+            label: "Mode",
+        });
+        hints.push(Hint {
+            key: "O",
+            label: "Owner",
+        });
+        hints.push(Hint {
+            key: "A/X/B",
+            label: "ACL",
+        });
+    }
+}
+
 /// Whether the active page's list has no rows.
 fn list_is_empty(app: &App) -> bool {
     match app.page {
         Page::Users => app.data.users.is_empty(),
         Page::Groups => app.data.groups.is_empty(),
         Page::Sessions => app.data.sessions.is_empty(),
+        Page::Resources => app.active_resource_entries().is_empty(),
         Page::Dashboard | Page::Settings => true,
     }
 }
@@ -124,7 +187,13 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let focus_label = match app.focus {
         Focus::Sidebar => "NAV",
         Focus::Content => "CONTENT",
-        Focus::Details => "DETAILS",
+        Focus::Details => {
+            if app.hybrid_active {
+                "RESOURCES"
+            } else {
+                "DETAILS"
+            }
+        }
     };
     let mut spans = vec![
         Span::styled(

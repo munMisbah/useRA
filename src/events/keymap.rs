@@ -69,6 +69,14 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 _ => {}
             },
             Focus::Content => {
+                if app.page == Page::Resources {
+                    match key.code {
+                        KeyCode::Left => app.previous_focus(),
+                        KeyCode::Right => app.next_focus(),
+                        other => handle_resource_key(app, other),
+                    }
+                    return;
+                }
                 let user_page = app.page == Page::Users;
                 let group_page = app.page == Page::Groups;
                 match key.code {
@@ -77,6 +85,9 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     KeyCode::Left => app.previous_focus(),
                     KeyCode::Right => app.next_focus(),
                     KeyCode::Enter => {}
+                    KeyCode::Char('f' | 'F') if user_page || group_page => {
+                        toggle_hybrid_resources(app);
+                    }
                     // Operation keys on the Users page.
                     KeyCode::Char('a' | 'A') if user_page => open_create_user(app),
                     KeyCode::Char('p' | 'P') if user_page => open_set_password(app),
@@ -95,17 +106,56 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                     _ => {}
                 }
             }
-            Focus::Details => match key.code {
-                KeyCode::Left => app.previous_focus(),
-                KeyCode::Right => app.next_focus(),
-                _ => {}
-            },
+            Focus::Details => {
+                if app.hybrid_active {
+                    match key.code {
+                        KeyCode::Left => app.previous_focus(),
+                        KeyCode::Right => app.next_focus(),
+                        KeyCode::Char('f' | 'F') => toggle_hybrid_resources(app),
+                        other => handle_resource_key(app, other),
+                    }
+                } else {
+                    match key.code {
+                        KeyCode::Left => app.previous_focus(),
+                        KeyCode::Right => app.next_focus(),
+                        KeyCode::Char('f' | 'F')
+                            if matches!(app.page, Page::Users | Page::Groups) =>
+                        {
+                            toggle_hybrid_resources(app);
+                        }
+                        _ => {}
+                    }
+                }
+            }
         },
     }
 }
 
 /// Routes keys inside an open operation modal.
 fn handle_modal_key(app: &mut App, key: KeyEvent) {
+    if let Some(ModalKind::Chmod(state)) = &mut app.modal.kind {
+        match key.code {
+            KeyCode::Esc => app.modal.close(),
+            KeyCode::Enter => submit_modal(app),
+            KeyCode::Up | KeyCode::BackTab => state.move_row(-1),
+            KeyCode::Down | KeyCode::Tab => state.move_row(1),
+            KeyCode::Left => state.move_col(-1),
+            KeyCode::Right => state.move_col(1),
+            KeyCode::Char(' ') => state.toggle(),
+            KeyCode::Char('r' | 'R') => {
+                if state.row == 3 {
+                    state.toggle();
+                } else {
+                    state.toggle_col(0);
+                }
+            }
+            KeyCode::Char('w' | 'W') => state.toggle_col(1),
+            KeyCode::Char('x' | 'X') => state.toggle_col(2),
+            _ => {}
+        }
+        return;
+    }
+
     match key.code {
         KeyCode::Esc => app.modal.close(),
         KeyCode::Enter => submit_modal(app),
@@ -270,6 +320,121 @@ fn open_group_remove_members(app: &mut App) {
     }
 }
 
+// --- Resource Manager actions & modal openers -------------------------
+
+fn toggle_hybrid_resources(app: &mut App) {
+    app.resources.hybrid_panel = !app.resources.hybrid_panel;
+    if !app.resources.hybrid_panel && app.focus == Focus::Details {
+        app.focus = Focus::Content;
+    }
+}
+
+fn handle_resource_key(app: &mut App, code: KeyCode) {
+    match code {
+        KeyCode::Down => app.move_resource_selection(1),
+        KeyCode::Up => app.move_resource_selection(-1),
+        KeyCode::Enter => app.open_selected_resource(),
+        KeyCode::Backspace | KeyCode::Char('-') => app.go_parent_resource(),
+        KeyCode::Char('g' | 'G') => open_goto_path(app),
+        KeyCode::Char('m' | 'M') => open_chmod(app),
+        KeyCode::Char('o' | 'O') => open_chown(app),
+        KeyCode::Char('a' | 'A') => open_set_acl(app),
+        KeyCode::Char('x' | 'X') => open_remove_acl(app),
+        KeyCode::Char('b' | 'B') => open_clear_acl(app),
+        _ => {}
+    }
+}
+
+fn open_goto_path(app: &mut App) {
+    let cwd = app.resources.cwd.display().to_string();
+    app.modal = form_modal::Modal::goto_path(&cwd);
+}
+
+fn open_chmod(app: &mut App) {
+    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+        app.notify(false, "select a file or directory first");
+        return;
+    };
+    let path = entry.path.display().to_string();
+    let mode = entry.mode;
+    let is_dir = entry.kind == crate::models::EntryKind::Directory;
+    app.modal = form_modal::Modal::chmod(path, mode, is_dir);
+}
+
+fn open_chown(app: &mut App) {
+    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+        app.notify(false, "select a file or directory first");
+        return;
+    };
+    let path = entry.path.display().to_string();
+    let owner = entry.owner_label();
+    let is_dir = entry.kind == crate::models::EntryKind::Directory;
+    app.modal = form_modal::Modal::chown(path, &owner, is_dir);
+}
+
+fn open_set_acl(app: &mut App) {
+    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+        app.notify(false, "select a file or directory first");
+        return;
+    };
+    let path = entry.path.display().to_string();
+    let is_dir = entry.kind == crate::models::EntryKind::Directory;
+    let prefill = contextual_acl_prefill(app, true);
+    app.modal = form_modal::Modal::set_acl(path, &prefill, is_dir);
+}
+
+fn open_remove_acl(app: &mut App) {
+    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+        app.notify(false, "select a file or directory first");
+        return;
+    };
+    let path = entry.path.display().to_string();
+    let is_dir = entry.kind == crate::models::EntryKind::Directory;
+    let prefill = contextual_acl_prefill(app, false);
+    app.modal = form_modal::Modal::remove_acl(path, &prefill, is_dir);
+}
+
+fn open_clear_acl(app: &mut App) {
+    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+        app.notify(false, "select a file or directory first");
+        return;
+    };
+    let path = entry.path.display().to_string();
+    app.modal = form_modal::Modal::confirm(
+        ModalKind::ConfirmClearAcl(path.clone()),
+        &format!("Clear all extended ACLs on '{path}'? Type YES."),
+    );
+}
+
+fn contextual_acl_prefill(app: &App, with_perms: bool) -> String {
+    if !app.hybrid_active {
+        return String::new();
+    }
+    match app.page {
+        Page::Users => app
+            .selected_user()
+            .map(|u| {
+                if with_perms {
+                    format!("u:{}:rwx", u.name)
+                } else {
+                    format!("u:{}", u.name)
+                }
+            })
+            .unwrap_or_default(),
+        Page::Groups => app
+            .selected_group()
+            .map(|g| {
+                if with_perms {
+                    format!("g:{}:rx", g.name)
+                } else {
+                    format!("g:{}", g.name)
+                }
+            })
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
 // --- Modal submission -------------------------------------------------
 
 /// Executes the pending operation described by the modal.
@@ -282,6 +447,23 @@ fn submit_modal(app: &mut App) {
         Some(kind) => kind,
         None => return,
     };
+    if kind == ModalKind::GoToPath {
+        let raw = app.modal.fields[0].value.trim().to_string();
+        if raw.is_empty() {
+            app.modal.error = Some("directory path is required".to_string());
+            return;
+        }
+        match app.goto_resource_path(std::path::PathBuf::from(&raw)) {
+            Ok(()) => {
+                app.modal.close();
+                app.notify(true, format!("opened {raw}"));
+            }
+            Err(err) => {
+                app.modal.error = Some(err);
+            }
+        }
+        return;
+    }
 
     // Privilege gate: every variant below mutates the system.
     if !app.data.is_root {
@@ -292,7 +474,6 @@ fn submit_modal(app: &mut App) {
         );
         return;
     }
-
     match kind {
         ModalKind::CreateUser => submit_create_user(app),
         ModalKind::SetPassword(user) => {
@@ -416,6 +597,183 @@ fn submit_modal(app: &mut App) {
                 app.modal.error = Some("enter at least one username".to_string());
             }
         },
+        ModalKind::GoToPath => unreachable!("handled before root gate"),
+        ModalKind::Chmod(state) => submit_chmod(app, state),
+        ModalKind::Chown { path, is_dir } => submit_chown(app, path, is_dir),
+        ModalKind::SetAcl { path, is_dir } => submit_set_acl(app, path, is_dir),
+        ModalKind::RemoveAcl { path, is_dir } => submit_remove_acl(app, path, is_dir),
+        ModalKind::ConfirmClearAcl(path) => {
+            if confirmed(app) {
+                let res = crate::services::resource_service::clear_acl(
+                    std::path::Path::new(&path),
+                    false,
+                );
+                audit_and_finish(app, "clear_acl", &path, res);
+            } else {
+                refuse_confirmation(app);
+            }
+        }
+        ModalKind::ConfirmRecursive(op) => {
+            if confirmed(app) {
+                submit_recursive_op(app, op);
+            } else {
+                refuse_confirmation(app);
+            }
+        }
+    }
+}
+
+fn wants_recursive(app: &App, is_dir: bool) -> bool {
+    is_dir
+        && app
+            .modal
+            .fields
+            .get(1)
+            .is_some_and(|f| matches!(f.value.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+}
+
+fn prompt_recursive(app: &mut App, path: &str, op: form_modal::RecursiveOp) {
+    let p = std::path::Path::new(path);
+    if let Err(res) = crate::services::resource_service::guard_recursive_path(p) {
+        app.modal.error = Some(res.message);
+        return;
+    }
+    let (count, truncated) = crate::services::resource_service::count_recursive_items(p, 1000);
+    let msg = format!(
+        "Apply recursively to '{path}' ({}{} items)? Type YES.",
+        count,
+        if truncated { "+" } else { "" }
+    );
+    app.modal = form_modal::Modal::confirm_recursive(op, &msg);
+}
+
+fn submit_chmod(app: &mut App, state: form_modal::ChmodState) {
+    let path = state.path.clone();
+    let mode = state.octal_string();
+    if state.recursive {
+        prompt_recursive(
+            app,
+            &path,
+            form_modal::RecursiveOp::Chmod {
+                path: path.clone(),
+                mode,
+            },
+        );
+        return;
+    }
+    let res =
+        crate::services::resource_service::set_mode(std::path::Path::new(&path), &mode, false);
+    audit_and_finish(app, "chmod", &path, res);
+}
+
+fn submit_chown(app: &mut App, path: String, is_dir: bool) {
+    let raw_owner = app.modal.fields[0].value.trim().to_string();
+    let owner = match crate::models::resource::validate_owner(&raw_owner) {
+        Ok(o) => o,
+        Err(err) => {
+            app.modal.error = Some(err);
+            return;
+        }
+    };
+    if wants_recursive(app, is_dir) {
+        prompt_recursive(
+            app,
+            &path,
+            form_modal::RecursiveOp::Chown {
+                path: path.clone(),
+                owner,
+            },
+        );
+        return;
+    }
+    let res =
+        crate::services::resource_service::set_owner(std::path::Path::new(&path), &owner, false);
+    audit_and_finish(app, "chown", &path, res);
+}
+
+fn submit_set_acl(app: &mut App, path: String, is_dir: bool) {
+    let raw_spec = app.modal.fields[0].value.trim().to_string();
+    let spec = match crate::models::resource::validate_acl_spec(&raw_spec) {
+        Ok(s) => s,
+        Err(err) => {
+            app.modal.error = Some(err);
+            return;
+        }
+    };
+    if wants_recursive(app, is_dir) {
+        prompt_recursive(
+            app,
+            &path,
+            form_modal::RecursiveOp::SetAcl {
+                path: path.clone(),
+                spec,
+            },
+        );
+        return;
+    }
+    let res = crate::services::resource_service::set_acl(std::path::Path::new(&path), &spec, false);
+    audit_and_finish(app, "set_acl", &path, res);
+}
+
+fn submit_remove_acl(app: &mut App, path: String, is_dir: bool) {
+    let raw_spec = app.modal.fields[0].value.trim().to_string();
+    let spec = match crate::models::resource::validate_acl_remove_spec(&raw_spec) {
+        Ok(s) => s,
+        Err(err) => {
+            app.modal.error = Some(err);
+            return;
+        }
+    };
+    if wants_recursive(app, is_dir) {
+        prompt_recursive(
+            app,
+            &path,
+            form_modal::RecursiveOp::RemoveAcl {
+                path: path.clone(),
+                spec,
+            },
+        );
+        return;
+    }
+    let res =
+        crate::services::resource_service::remove_acl(std::path::Path::new(&path), &spec, false);
+    audit_and_finish(app, "remove_acl", &path, res);
+}
+
+fn submit_recursive_op(app: &mut App, op: form_modal::RecursiveOp) {
+    match op {
+        form_modal::RecursiveOp::Chmod { path, mode } => {
+            let res = crate::services::resource_service::set_mode(
+                std::path::Path::new(&path),
+                &mode,
+                true,
+            );
+            audit_and_finish(app, "chmod_recursive", &path, res);
+        }
+        form_modal::RecursiveOp::Chown { path, owner } => {
+            let res = crate::services::resource_service::set_owner(
+                std::path::Path::new(&path),
+                &owner,
+                true,
+            );
+            audit_and_finish(app, "chown_recursive", &path, res);
+        }
+        form_modal::RecursiveOp::SetAcl { path, spec } => {
+            let res = crate::services::resource_service::set_acl(
+                std::path::Path::new(&path),
+                &spec,
+                true,
+            );
+            audit_and_finish(app, "set_acl_recursive", &path, res);
+        }
+        form_modal::RecursiveOp::RemoveAcl { path, spec } => {
+            let res = crate::services::resource_service::remove_acl(
+                std::path::Path::new(&path),
+                &spec,
+                true,
+            );
+            audit_and_finish(app, "remove_acl_recursive", &path, res);
+        }
     }
 }
 
@@ -503,47 +861,72 @@ fn submit_create_user(app: &mut App) {
     };
 
     let res = crate::services::user_service::create_user(&name, gecos_opt, home_opt, shell, true);
-    if res.ok {
-        if !groups.is_empty() {
-            // Supplementary groups right after creation.
-            let list: Vec<&str> = groups
-                .split(',')
-                .map(|g| g.trim())
-                .filter(|g| !g.is_empty())
-                .collect();
-            if !list.is_empty() {
-                let res2 = crate::services::user_service::add_to_groups(&name, &list);
-                if !res2.ok {
-                    app.modal.close();
-                    app.notify(
-                        false,
-                        format!("user created, but groups failed: {}", res2.message),
-                    );
-                    app.reload();
-                    return;
-                }
-            }
-        }
-        let password = app
-            .modal
-            .fields
-            .get(5)
-            .map(|f| f.value.clone())
-            .unwrap_or_default();
-        if !password.is_empty() {
-            let res_pw = crate::services::user_service::set_password(&name, &password);
-            if !res_pw.ok {
-                app.modal.close();
-                app.notify(
-                    false,
-                    format!("user created, but password failed: {}", res_pw.message),
-                );
-                app.reload();
-                return;
+    if !res.ok {
+        audit_and_finish(app, "create_user", &name, res);
+        return;
+    }
+
+    let mut audit_notes: Vec<String> = Vec::new();
+    record_audit_best_effort("create_user", &name, &res, &mut audit_notes);
+
+    let mut final_ok = true;
+    let mut message = res.message.clone();
+
+    if !groups.is_empty() {
+        // Supplementary groups right after creation.
+        let list: Vec<&str> = groups
+            .split(',')
+            .map(|g| g.trim())
+            .filter(|g| !g.is_empty())
+            .collect();
+        if !list.is_empty() {
+            let res_grp = crate::services::user_service::add_to_groups(&name, &list);
+            record_audit_best_effort("add_to_groups", &name, &res_grp, &mut audit_notes);
+            if !res_grp.ok {
+                final_ok = false;
+                message = format!("user created, but groups failed: {}", res_grp.message);
             }
         }
     }
-    audit_and_finish(app, "create_user", &name, res);
+
+    let password = app
+        .modal
+        .fields
+        .get(5)
+        .map(|f| f.value.clone())
+        .unwrap_or_default();
+    if !password.is_empty() {
+        let res_pw = crate::services::user_service::set_password(&name, &password);
+        record_audit_best_effort("set_password", &name, &res_pw, &mut audit_notes);
+        if !res_pw.ok {
+            final_ok = false;
+            if message == res.message {
+                message = format!("user created, but password failed: {}", res_pw.message);
+            } else {
+                message.push_str(&format!("; password failed: {}", res_pw.message));
+            }
+        }
+    }
+
+    if !audit_notes.is_empty() {
+        message.push_str(&format!(" (audit log: {})", audit_notes.join("; ")));
+    }
+    app.modal.close();
+    app.notify(final_ok, message);
+    app.reload();
+}
+
+fn record_audit_best_effort(
+    operation: &'static str,
+    target: &str,
+    res: &crate::services::user_service::OpResult,
+    notes: &mut Vec<String>,
+) {
+    let entry =
+        crate::system::audit::AuditEntry::from_result(operation, target, res.ok, &res.message);
+    if let Err(err) = crate::system::audit::record(&entry) {
+        notes.push(err);
+    }
 }
 
 /// Records the operation in the audit log, then shows the result.
@@ -611,6 +994,7 @@ fn move_content_selection(app: &mut App, delta: isize) {
                 Some(app.selections.sessions)
             });
         }
+        Page::Resources => app.move_resource_selection(delta),
         Page::Dashboard | Page::Settings => {}
     }
 }
@@ -792,5 +1176,77 @@ mod tests {
         assert_eq!(app.modal.fields.len(), 2);
         assert!(app.modal.fields[0].masked);
         assert!(app.modal.fields[1].masked);
+    }
+
+    #[test]
+    fn hybrid_panel_toggle_and_contextual_acl_prefill() {
+        let mut app = App::default();
+        app.page = Page::Users;
+        app.focus = Focus::Details;
+        app.hybrid_active = true;
+        app.reload();
+        assert!(!app.data.users.is_empty());
+
+        let expected_user = app.selected_user().unwrap().name.clone();
+        let temp_file = std::env::temp_dir().join("usera_keymap_hybrid_test");
+        let _ = std::fs::write(&temp_file, b"ok");
+        app.goto_resource_path(std::env::temp_dir()).unwrap();
+        if let Some(idx) = app
+            .active_resource_entries()
+            .iter()
+            .position(|e| e.path == temp_file)
+        {
+            app.resources.selected = idx;
+            handle_key(&mut app, key_press(KeyCode::Char('a')));
+            assert!(app.modal.is_open());
+            assert_eq!(app.modal.fields[0].value, format!("u:{expected_user}:rwx"));
+            app.modal.close();
+        }
+        let _ = std::fs::remove_file(&temp_file);
+
+        // Pressing F toggles hybrid panel off and shifts focus back to Content
+        handle_key(&mut app, key_press(KeyCode::Char('f')));
+        assert!(!app.resources.hybrid_panel);
+        assert_eq!(app.focus, Focus::Content);
+    }
+
+    #[test]
+    fn recursive_chmod_refuses_protected_system_paths_in_modal() {
+        let mut app = App::default();
+        app.data.is_root = true;
+        app.modal = form_modal::Modal::chmod("/etc".into(), 0o0755, true);
+        // Move to row 3 (Recursive) and toggle with Space
+        handle_key(&mut app, key_press(KeyCode::Up));
+        handle_key(&mut app, key_press(KeyCode::Char(' ')));
+        handle_key(&mut app, key_press(KeyCode::Enter));
+        assert!(app.modal.is_open());
+        assert!(app
+            .modal
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .contains("protected system path"));
+    }
+
+    #[test]
+    fn chmod_modal_checkbox_navigation_updates_mode() {
+        let mut app = App::default();
+        app.modal = form_modal::Modal::chmod("/tmp/demo".into(), 0o0640, false);
+
+        // Toggle Owner Execute (row 0, col 2) using right arrows + Space -> 0740
+        handle_key(&mut app, key_press(KeyCode::Right));
+        handle_key(&mut app, key_press(KeyCode::Right));
+        handle_key(&mut app, key_press(KeyCode::Char(' ')));
+        // Move down to Group (row 1) and quick-toggle Write via 'w' -> 0760
+        handle_key(&mut app, key_press(KeyCode::Down));
+        handle_key(&mut app, key_press(KeyCode::Char('w')));
+
+        match &app.modal.kind {
+            Some(form_modal::ModalKind::Chmod(state)) => {
+                assert_eq!(state.octal_string(), "0760");
+                assert_eq!(state.rwx_string(), "-rwxrw----");
+            }
+            other => panic!("expected Chmod modal, got {other:?}"),
+        }
     }
 }

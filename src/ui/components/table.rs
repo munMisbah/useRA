@@ -34,7 +34,19 @@ pub fn render(
     state: &mut TableState,
     focused: bool,
 ) {
-    let header = Row::new(HEADERS.map(|h| Cell::from(Line::from(format!(" {h}")))))
+    render_with_headers(frame, area, HEADERS, rows, state, focused);
+}
+
+/// Renders a three-column table with custom column header titles.
+pub fn render_with_headers(
+    frame: &mut Frame,
+    area: Rect,
+    headers: [&str; 3],
+    rows: &[RowData],
+    state: &mut TableState,
+    focused: bool,
+) {
+    let header = Row::new(headers.map(|h| Cell::from(Line::from(format!(" {h}")))))
         .style(Style::new().add_modifier(Modifier::BOLD));
 
     let body: Vec<Row> = rows

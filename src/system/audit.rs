@@ -91,16 +91,43 @@ fn format_utc(secs: u64) -> String {
 /// (caller decides whether to surface it; it never replaces the
 /// operation result).
 pub fn record(entry: &AuditEntry) -> Result<(), String> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+
     let path = log_path();
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        if let Ok(meta) = std::fs::symlink_metadata(parent) {
+            if meta.file_type().is_symlink() {
+                return Err(format!(
+                    "refusing audit dir {}: path is a symlink",
+                    parent.display()
+                ));
+            }
+        } else {
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o750)
+                .create(parent)
+                .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        }
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o750))
+            .map_err(|e| format!("cannot chmod {}: {e}", parent.display()))?;
+    }
+    if let Ok(meta) = std::fs::symlink_metadata(&path) {
+        if meta.file_type().is_symlink() {
+            return Err(format!(
+                "refusing audit file {}: path is a symlink",
+                path.display()
+            ));
+        }
     }
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
+        .mode(0o600)
         .open(&path)
         .map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("cannot chmod {}: {e}", path.display()))?;
     let status = if entry.ok { "OK" } else { "FAIL" };
     let mut line = format!(
         "{} {} op={} target={}",
@@ -162,5 +189,21 @@ mod tests {
         let last = content.lines().last().expect("has lines");
         assert!(!last.contains('\n'));
         assert!(last.contains("line1line2pwned"));
+    }
+
+    #[test]
+    fn audit_dir_and_file_have_restricted_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let entry = AuditEntry::from_result("perm_test", "u", true, "");
+        record(&entry).expect("audit write works");
+        let path = log_path();
+        let file_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(file_mode, 0o600);
+        let dir_mode = std::fs::metadata(path.parent().unwrap())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(dir_mode, 0o750);
     }
 }

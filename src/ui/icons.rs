@@ -13,6 +13,11 @@ pub const USERS: &str = "\u{eb5b}"; // nf-md-account-multiple
 pub const GROUPS: &str = "\u{e62a}"; // nf-fa-users
 /// Sessions icon.
 pub const SESSIONS: &str = "\u{f482}"; // nf-oct-device_desktop
+/// Resources / filesystem icon.
+pub const RESOURCES: &str = "\u{f07c}"; // nf-fa-folder_open
+pub const FOLDER: &str = "\u{f07b}"; // nf-fa-folder
+pub const FILE: &str = "\u{f15b}"; // nf-fa-file
+pub const LINK: &str = "\u{f0c1}"; // nf-fa-link
 /// Settings icon.
 pub const SETTINGS: &str = "\u{e615}"; // nf-fa-cog
 /// User icon for detail headings.
@@ -48,6 +53,7 @@ pub fn for_page(page: crate::app::Page) -> &'static str {
         crate::app::Page::Users => USERS,
         crate::app::Page::Groups => GROUPS,
         crate::app::Page::Sessions => SESSIONS,
+        crate::app::Page::Resources => RESOURCES,
         crate::app::Page::Settings => SETTINGS,
     }
 }
@@ -69,7 +75,10 @@ mod tests {
     #[test]
     fn icons_come_from_private_use_area() {
         // Nerd Font glyphs live in BMP PUA; guards against typos.
-        for icon in [DASHBOARD, USERS, GROUPS, SESSIONS, SETTINGS, HELP, RELOAD] {
+        for icon in [
+            DASHBOARD, USERS, GROUPS, SESSIONS, RESOURCES, SETTINGS, FOLDER, FILE, LINK, HELP,
+            RELOAD, SEARCH,
+        ] {
             let c = icon.chars().next().expect("non-empty");
             assert!(
                 ('\u{e000}'..='\u{f8ff}').contains(&c),

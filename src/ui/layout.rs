@@ -29,15 +29,23 @@ pub struct Regions {
     pub sidebar: Rect,
     /// Active page content.
     pub content: Rect,
-    /// Selected-item details; hidden (zero-width) on narrow terminals.
+    /// Selected-item details (or Hybrid Resource panel on wide Users/Groups); zero-width on narrow terminals.
     pub details: Rect,
+    /// Bottom details strip in Hybrid mode; zero-height in standard mode.
+    pub bottom_details: Rect,
     /// Status and shortcut bar across the bottom.
     pub footer: Rect,
 }
 
 impl Regions {
-    /// Splits the frame area into the five fixed regions.
+    /// Splits the frame area into standard regions.
+    #[allow(dead_code)]
     pub fn compute(area: Rect) -> Self {
+        Self::compute_for(area, false)
+    }
+
+    /// Splits the frame area into standard 3-column or Hybrid layout.
+    pub fn compute_for(area: Rect, hybrid: bool) -> Self {
         let show_details = area.width >= DETAILS_MIN_WIDTH;
         let sidebar_width = if area.width >= SIDEBAR_MIN_WIDTH {
             SIDEBAR_WIDTH
@@ -50,6 +58,30 @@ impl Regions {
             Constraint::Length(1), // footer
         ])
         .split(area);
+
+        if hybrid {
+            let body_cols =
+                Layout::horizontal([Constraint::Length(sidebar_width), Constraint::Min(30)])
+                    .spacing(1)
+                    .split(vertical[0]);
+
+            let right_rows =
+                Layout::vertical([Constraint::Min(8), Constraint::Length(6)]).split(body_cols[1]);
+
+            let top_cols =
+                Layout::horizontal([Constraint::Percentage(46), Constraint::Percentage(54)])
+                    .spacing(1)
+                    .split(right_rows[0]);
+
+            return Regions {
+                header: Rect::default(),
+                sidebar: body_cols[0],
+                content: top_cols[0],
+                details: top_cols[1],
+                bottom_details: right_rows[1],
+                footer: vertical[1],
+            };
+        }
 
         let horizontal = Layout::horizontal([
             Constraint::Length(sidebar_width),
@@ -64,10 +96,10 @@ impl Regions {
             sidebar: horizontal[0],
             content: horizontal[1],
             details: horizontal[2],
+            bottom_details: Rect::default(),
             footer: vertical[1],
         }
     }
-
     /// Whether the details panel is visible on this frame.
     pub fn details_visible(&self) -> bool {
         self.details.width > 0
@@ -87,7 +119,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     };
     frame.render_widget(Block::new().style(crate::ui::theme::base()), frame_area);
 
-    let regions = Regions::compute(inner_frame);
+    let hybrid = app.has_hybrid_resources(inner_frame.width, inner_frame.height);
+    app.hybrid_active = hybrid;
+    let regions = Regions::compute_for(inner_frame, hybrid);
 
     // Sidebar without border
     crate::ui::components::sidebar::render(frame, app, regions.sidebar);
@@ -114,17 +148,52 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         content_inner
     };
 
-    let details_inner = if regions.details_visible() {
-        crate::ui::components::panel::frame_area(
+    if hybrid {
+        crate::ui::pages::render(frame, app, page_area, Rect::default());
+        let right_title = match app.page {
+            crate::app::Page::Users => app
+                .selected_user()
+                .map(|u| format!("Resources (ACL: {})", u.name))
+                .unwrap_or_else(|| "Resources".to_string()),
+            crate::app::Page::Groups => app
+                .selected_group()
+                .map(|g| format!("Resources (ACL: {})", g.name))
+                .unwrap_or_else(|| "Resources".to_string()),
+            _ => "Resources".to_string(),
+        };
+        let right_inner = crate::ui::components::panel::frame_area(
             frame,
             regions.details,
-            "Details",
+            &right_title,
             app.focus == Focus::Details,
-        )
+        );
+        crate::ui::pages::resources::render_hybrid_right(frame, app, right_inner);
+
+        let bottom_inner = crate::ui::components::panel::frame_area(
+            frame,
+            regions.bottom_details,
+            "Details",
+            false,
+        );
+        crate::ui::pages::resources::render_hybrid_bottom_details(frame, app, bottom_inner);
     } else {
-        regions.details
-    };
-    crate::ui::pages::render(frame, app, page_area, details_inner);
+        let details_title = if app.page == crate::app::Page::Resources {
+            "Details & ACL"
+        } else {
+            "Details"
+        };
+        let details_inner = if regions.details_visible() {
+            crate::ui::components::panel::frame_area(
+                frame,
+                regions.details,
+                details_title,
+                app.focus == Focus::Details,
+            )
+        } else {
+            regions.details
+        };
+        crate::ui::pages::render(frame, app, page_area, details_inner);
+    }
     crate::ui::components::statusbar::render(frame, app, regions.footer);
 
     if app.show_help {
@@ -150,4 +219,37 @@ pub fn draw_border(frame: &mut Frame, area: Rect, title: &str, focused: bool) ->
     let inner = block.inner(area);
     frame.render_widget(block, area);
     inner
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    #[test]
+    fn hybrid_layout_activates_on_wide_users_and_collapses_on_narrow() {
+        let mut app = App::default();
+        app.page = crate::app::Page::Users;
+        app.reload();
+
+        let mut wide = Terminal::new(TestBackend::new(120, 32)).unwrap();
+        wide.draw(|frame| render(frame, &mut app)).unwrap();
+        assert!(app.hybrid_active);
+
+        let mut narrow = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        narrow.draw(|frame| render(frame, &mut app)).unwrap();
+        assert!(!app.hybrid_active);
+    }
+
+    #[test]
+    fn resources_page_renders_cleanly() {
+        let mut app = App::default();
+        app.page = crate::app::Page::Resources;
+        app.reload();
+
+        let mut term = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        term.draw(|frame| render(frame, &mut app)).unwrap();
+        assert!(!app.hybrid_active);
+    }
 }

@@ -83,9 +83,10 @@ mod tests {
 
     #[test]
     fn pages_list_matches_layout_order() {
-        assert_eq!(PAGES.len(), 5);
+        assert_eq!(PAGES.len(), 6);
         assert_eq!(PAGES[0], crate::app::Page::Dashboard);
-        assert_eq!(PAGES[4], crate::app::Page::Settings);
+        assert_eq!(PAGES[4], crate::app::Page::Resources);
+        assert_eq!(PAGES[5], crate::app::Page::Settings);
     }
 
     #[test]

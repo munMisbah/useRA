@@ -44,7 +44,7 @@ The application must support standard Linux account management through native sy
 
 Detailed project documentation is maintained in the `docs/` directory.
 
-- `PROJECT_SPEC.md`: Product requirements and scope.
+- `PROJECT_SPECS.md`: Product requirements and scope.
 - `ARCHITECTURE.md`: Application architecture.
 - `UI_DESIGN.md`: Interface and interaction design.
 - `FEATURES.md`: Feature specifications.
@@ -103,6 +103,19 @@ The application will require appropriate root privileges for administrative oper
 | G | Add members (comma-separated usernames) |
 | R | Remove members (prefilled with current members) |
 | D | Delete group (confirm with YES; user accounts untouched) |
+
+### Resource & ACL management shortcuts (Resources page or Hybrid right panel)
+
+| Key | Action |
+| --- | --- |
+| F | Toggle contextual Resources panel on Users/Groups (`>= 105x24` terminals) |
+| Enter / ⌫ | Open directory / go to parent directory |
+| G | Jump to directory path |
+| M | Change permissions (`chmod`, with optional recursive `YES` gate) |
+| O | Change owner/group (`chown`, with optional recursive `YES` gate) |
+| A | Set/modify POSIX ACL entry (`setfacl -m`, auto-prefilled in Hybrid mode) |
+| X | Remove POSIX ACL entry (`setfacl -x`) |
+| B | Clear all extended POSIX ACL entries (`setfacl -b`, confirm with `YES`) |
 
 ### Security model
 

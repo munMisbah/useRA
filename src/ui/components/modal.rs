@@ -9,14 +9,17 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 
 /// Keybindings listed in the help modal.
-const HELP_ROWS: [(&str, &str); 9] = [
+const HELP_ROWS: [(&str, &str); 12] = [
     ("Up / Down", "Navigate list or pages"),
     ("Left / Right", "Change panel focus"),
     ("Tab", "Next panel"),
-    ("Enter", "Select or open"),
+    ("Enter / ⌫", "Open dir / parent dir"),
     ("Esc", "Back / close modal"),
     ("/", "Search"),
+    ("F", "Toggle Resources split (Users/Groups)"),
     ("P", "Set / change password (root)"),
+    ("G / M / O", "Path / chmod / chown (Resources)"),
+    ("A / X / B", "Set / remove / clear POSIX ACL"),
     ("?", "Toggle help"),
     ("Q", "Quit"),
 ];

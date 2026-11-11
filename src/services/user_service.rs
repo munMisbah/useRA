@@ -18,14 +18,14 @@ pub struct OpResult {
 }
 
 impl OpResult {
-    fn success(message: impl Into<String>) -> Self {
+    pub(crate) fn success(message: impl Into<String>) -> Self {
         OpResult {
             ok: true,
             message: message.into(),
         }
     }
 
-    fn failure(message: impl Into<String>) -> Self {
+    pub(crate) fn failure(message: impl Into<String>) -> Self {
         OpResult {
             ok: false,
             message: message.into(),
@@ -119,6 +119,14 @@ pub fn create_user(
     if let Err(msg) = validate_username(name) {
         return OpResult::failure(format!("invalid username: {msg}"));
     }
+    if !shell.starts_with('/') {
+        return OpResult::failure("shell must be an absolute path".to_string());
+    }
+    if let Some(dir) = home {
+        if !dir.starts_with('/') {
+            return OpResult::failure("home directory must be an absolute path".to_string());
+        }
+    }
     let mut args: Vec<&str> = vec!["--shell", shell];
     if let Some(dir) = home {
         args.push("--home");
@@ -133,6 +141,7 @@ pub fn create_user(
             args.push(comment);
         }
     }
+    args.push("--");
     args.push(name);
 
     match command::run("useradd", &args) {
@@ -155,7 +164,7 @@ pub fn unlock_user(name: &str) -> OpResult {
 fn lock_impl(name: &str, lock: bool) -> OpResult {
     let op = if lock { "lock" } else { "unlock" };
     let flag = if lock { "-l" } else { "-u" };
-    match command::run("passwd", &[flag, name]) {
+    match command::run("passwd", &[flag, "--", name]) {
         Err(err) => command_error(op, name, err),
         Ok(output) if output.status.success() => OpResult::success(format!("user {name} {op}ed")),
         Ok(output) => status_error(op, name, &output),
@@ -191,7 +200,7 @@ pub fn set_shell(name: &str, shell: &str) -> OpResult {
     if !shell.starts_with('/') {
         return OpResult::failure("shell must be an absolute path".to_string());
     }
-    match command::run("usermod", &["--shell", shell, name]) {
+    match command::run("usermod", &["--shell", shell, "--", name]) {
         Err(err) => command_error("change shell", name, err),
         Ok(output) if output.status.success() => {
             OpResult::success(format!("shell of {name} set to {shell}"))
@@ -215,7 +224,7 @@ pub fn set_expiry(name: &str, date: Option<&str>) -> OpResult {
             return OpResult::failure("expiry must be YYYY-MM-DD".to_string());
         }
     }
-    match command::run("chage", &[flag, value, name]) {
+    match command::run("chage", &[flag, value, "--", name]) {
         Err(err) => command_error("set expiry", name, err),
         Ok(output) if output.status.success() => OpResult::success(format!(
             "expiry of {name} {}",
@@ -231,8 +240,14 @@ pub fn add_to_groups(name: &str, groups: &[&str]) -> OpResult {
     if groups.is_empty() {
         return OpResult::failure("no groups given".to_string());
     }
+    if let Some(bad) = groups
+        .iter()
+        .find(|g| g.is_empty() || g.starts_with('-') || g.contains([':', ',', ' ']))
+    {
+        return OpResult::failure(format!("invalid group name: {bad}"));
+    }
     let list = groups.join(",");
-    match command::run("usermod", &["--append", "--groups", &list, name]) {
+    match command::run("usermod", &["--append", "--groups", &list, "--", name]) {
         Err(err) => command_error("add groups", name, err),
         Ok(output) if output.status.success() => {
             OpResult::success(format!("{name} added to {list}"))
@@ -249,9 +264,9 @@ pub fn add_to_groups(name: &str, groups: &[&str]) -> OpResult {
 /// remain.
 pub fn delete_user(name: &str, remove_home: bool) -> OpResult {
     let args: Vec<&str> = if remove_home {
-        vec!["--remove", name]
+        vec!["--remove", "--", name]
     } else {
-        vec![name]
+        vec!["--", name]
     };
     match command::run("userdel", &args) {
         Err(err) => command_error("delete user", name, err),
@@ -343,6 +358,17 @@ mod tests {
         let res = create_user("Bad Name", None, None, "/bin/bash", true);
         assert!(!res.ok);
         assert!(res.message.contains("invalid username"));
+    }
+
+    #[test]
+    fn create_user_rejects_relative_shell_and_home() {
+        let res = create_user("alice", None, None, "bash", true);
+        assert!(!res.ok);
+        assert!(res.message.contains("absolute path"));
+
+        let res2 = create_user("alice", None, Some("home/alice"), "/bin/bash", true);
+        assert!(!res2.ok);
+        assert!(res2.message.contains("absolute path"));
     }
 
     #[test]

@@ -51,6 +51,7 @@ pub fn create_group(name: &str, gid: Option<u32>) -> OpResult {
         args.push("--gid".to_string());
         args.push(id.to_string());
     }
+    args.push("--".to_string());
     args.push(name.to_string());
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
@@ -66,7 +67,7 @@ pub fn rename_group(old: &str, new: &str) -> OpResult {
     if let Err(msg) = validate_group_name(new) {
         return failure(format!("invalid group name: {msg}"));
     }
-    match command::run("groupmod", &["--new-name", new, old]) {
+    match command::run("groupmod", &["--new-name", new, "--", old]) {
         Err(err) => command_error("rename group", old, err),
         Ok(output) if output.status.success() => success(format!("group {old} renamed to {new}")),
         Ok(output) => status_error("rename group", old, &output),
@@ -76,7 +77,7 @@ pub fn rename_group(old: &str, new: &str) -> OpResult {
 /// Deletes a group (`groupdel`). Membership in this group is removed
 /// with it; user accounts are untouched.
 pub fn delete_group(name: &str) -> OpResult {
-    match command::run("groupdel", &[name]) {
+    match command::run("groupdel", &["--", name]) {
         Err(err) => command_error("delete group", name, err),
         Ok(output) if output.status.success() => success(format!("group {name} deleted")),
         Ok(output) => status_error("delete group", name, &output),
@@ -102,7 +103,7 @@ fn mutate_members(action: &str, group: &str, users: &[String]) -> OpResult {
     let mut failures: Vec<String> = Vec::new();
     let mut done: Vec<String> = Vec::new();
     for user in users {
-        match command::run("gpasswd", &[flag, user.as_str(), group]) {
+        match command::run("gpasswd", &[flag, user.as_str(), "--", group]) {
             Err(err) => failures.push(format!("{user}: {err}")),
             Ok(output) if output.status.success() => done.push(user.clone()),
             Ok(output) => {

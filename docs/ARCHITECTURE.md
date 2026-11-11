@@ -11,26 +11,29 @@ useRA follows a modular architecture with clear separation between:
 
 UI components must not execute system commands directly.
 
-## 2. Proposed Directory Structure
+## 2. Directory Structure
 
 ```
 src/
 ├── main.rs
 ├── app.rs
-├── config.rs
 │
 ├── ui/
 │   ├── mod.rs
 │   ├── layout.rs
 │   ├── theme.rs
+│   ├── icons.rs
 │   ├── components/
 │   │   ├── mod.rs
+│   │   ├── details.rs
+│   │   ├── form_modal.rs
 │   │   ├── header.rs
+│   │   ├── modal.rs
+│   │   ├── panel.rs
+│   │   ├── search_bar.rs
 │   │   ├── sidebar.rs
 │   │   ├── statusbar.rs
-│   │   ├── table.rs
-│   │   ├── modal.rs
-│   │   └── popup.rs
+│   │   └── table.rs
 │   │
 │   └── pages/
 │       ├── mod.rs
@@ -38,6 +41,7 @@ src/
 │       ├── users.rs
 │       ├── groups.rs
 │       ├── sessions.rs
+│       ├── resources.rs
 │       └── settings.rs
 │
 ├── events/
@@ -47,21 +51,29 @@ src/
 │
 ├── models/
 │   ├── mod.rs
+│   ├── host.rs
 │   ├── user.rs
+│   ├── resource.rs
 │   ├── group.rs
 │   └── session.rs
 │
 ├── services/
 │   ├── mod.rs
+│   ├── app_data.rs
 │   ├── user_service.rs
-│   ├── group_service.rs
-│   └── session_service.rs
+│   ├── resource_service.rs
+│   └── group_service.rs
 │
 ├── system/
 │   ├── mod.rs
-│   ├── command.rs
 │   ├── account_reader.rs
-│   └── privilege.rs
+│   ├── acl.rs
+│   ├── audit.rs
+│   ├── command.rs
+│   ├── filesystem.rs
+│   ├── permission.rs
+│   ├── privilege.rs
+│   └── updater.rs
 │
 └── errors/
     ├── mod.rs

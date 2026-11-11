@@ -1,9 +1,10 @@
 //! Core application state: active page, panel focus, runtime flags, and
 //! the live system data snapshot.
 
+use crate::models::{AclInfo, ResourceEntry};
 use crate::services::AppData;
 use ratatui::widgets::TableState;
-
+use std::path::PathBuf;
 /// Identifiable main pages, matching the sidebar navigation order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Page {
@@ -12,15 +13,17 @@ pub enum Page {
     Users,
     Groups,
     Sessions,
+    Resources,
     Settings,
 }
 
 /// Ordered list of pages as shown in the sidebar.
-pub const PAGES: [Page; 5] = [
+pub const PAGES: [Page; 6] = [
     Page::Dashboard,
     Page::Users,
     Page::Groups,
     Page::Sessions,
+    Page::Resources,
     Page::Settings,
 ];
 
@@ -32,6 +35,7 @@ impl Page {
             Page::Users => "Users",
             Page::Groups => "Groups",
             Page::Sessions => "Sessions",
+            Page::Resources => "Resources",
             Page::Settings => "Settings",
         }
     }
@@ -104,6 +108,39 @@ pub struct Selections {
     pub sessions_table: TableState,
 }
 
+/// Resource Manager browser state (shared by `Page::Resources` and Hybrid right panel).
+#[derive(Debug)]
+pub struct ResourceState {
+    /// Current directory being browsed.
+    pub cwd: PathBuf,
+    /// Entries inside `cwd`.
+    pub entries: Vec<ResourceEntry>,
+    /// Selected row index inside the active resource list.
+    pub selected: usize,
+    /// Table scroll & selection state.
+    pub table: TableState,
+    /// Parsed POSIX ACLs for the currently selected entry.
+    pub selected_acl: AclInfo,
+    /// Last directory read error, if any.
+    pub load_error: Option<String>,
+    /// Whether the contextual right-side Resource panel is enabled on Users/Groups.
+    pub hybrid_panel: bool,
+}
+
+impl Default for ResourceState {
+    fn default() -> Self {
+        Self {
+            cwd: crate::services::resource_service::default_start_dir(),
+            entries: Vec::new(),
+            selected: 0,
+            table: TableState::default(),
+            selected_acl: AclInfo::default(),
+            load_error: None,
+            hybrid_panel: true,
+        }
+    }
+}
+
 /// Root application state.
 #[derive(Debug, Default)]
 pub struct App {
@@ -129,6 +166,10 @@ pub struct App {
     pub search_active: bool,
     /// Live search query string used for filtering lists.
     pub search_query: String,
+    /// Resource Manager browser state.
+    pub resources: ResourceState,
+    /// Updated each frame when Hybrid mode is active on Users/Groups.
+    pub hybrid_active: bool,
 }
 
 impl App {
@@ -171,6 +212,7 @@ impl App {
                     });
                 self.load_error = None;
                 self.data = data;
+                self.reload_resources();
             }
             Err(err) => {
                 self.load_error = Some(err.to_string());
@@ -196,7 +238,18 @@ impl App {
 
     /// Whether the current active page supports searching (Users, Groups, Sessions).
     pub fn is_searchable_page(&self) -> bool {
-        matches!(self.page, Page::Users | Page::Groups | Page::Sessions)
+        matches!(
+            self.page,
+            Page::Users | Page::Groups | Page::Sessions | Page::Resources
+        )
+    }
+
+    /// Minimum terminal geometry for Hybrid contextual Resource panel on Users/Groups.
+    pub fn has_hybrid_resources(&self, width: u16, height: u16) -> bool {
+        matches!(self.page, Page::Users | Page::Groups)
+            && self.resources.hybrid_panel
+            && width >= 105
+            && height >= 24
     }
 
     /// Cycles panel focus forward.
@@ -289,6 +342,153 @@ impl App {
             .copied()
     }
 
+    /// Reloads directory entries in `resources.cwd` and refreshes ACL for selection.
+    pub fn reload_resources(&mut self) {
+        match crate::services::resource_service::list_dir(
+            &self.resources.cwd,
+            &self.data.users,
+            &self.data.groups,
+        ) {
+            Ok(entries) => {
+                self.resources.entries = entries;
+                self.resources.load_error = None;
+            }
+            Err(err) => {
+                self.resources.entries.clear();
+                self.resources.load_error = Some(err.to_string());
+            }
+        }
+        let len = self.active_resource_entries().len();
+        self.resources.selected = self.resources.selected.min(len.saturating_sub(1));
+        self.resources.table.select(if len == 0 {
+            None
+        } else {
+            Some(self.resources.selected)
+        });
+        self.refresh_selected_acl();
+    }
+
+    /// Refreshes POSIX ACL data for the currently selected resource entry.
+    pub fn refresh_selected_acl(&mut self) {
+        if let Some(entry) = self.selected_resource() {
+            let path = entry.path.clone();
+            self.resources.selected_acl = crate::services::resource_service::read_acl(&path);
+        } else {
+            self.resources.selected_acl = AclInfo::default();
+        }
+    }
+
+    /// Resource entries filtered by `search_query` only when on `Page::Resources`.
+    pub fn active_resource_entries(&self) -> Vec<&ResourceEntry> {
+        if self.page != Page::Resources {
+            return self.resources.entries.iter().collect();
+        }
+        let q = self.search_query.trim().to_lowercase();
+        if q.is_empty() {
+            return self.resources.entries.iter().collect();
+        }
+        self.resources
+            .entries
+            .iter()
+            .filter(|e| {
+                e.is_parent_link
+                    || e.name.to_lowercase().contains(&q)
+                    || e.owner_name.to_lowercase().contains(&q)
+                    || e.group_name.to_lowercase().contains(&q)
+                    || e.mode_octal().contains(&q)
+            })
+            .collect()
+    }
+
+    /// Currently selected resource entry (if any).
+    pub fn selected_resource(&self) -> Option<&ResourceEntry> {
+        self.active_resource_entries()
+            .get(self.resources.selected)
+            .copied()
+    }
+
+    /// Moves selection in the Resource browser and updates ACL info.
+    pub fn move_resource_selection(&mut self, delta: isize) {
+        let len = self.active_resource_entries().len();
+        self.resources.selected =
+            crate::ui::components::table::move_selection(self.resources.selected, len, delta);
+        self.resources.table.select(if len == 0 {
+            None
+        } else {
+            Some(self.resources.selected)
+        });
+        self.refresh_selected_acl();
+    }
+
+    /// Enters the selected directory (or goes up on `..`).
+    pub fn open_selected_resource(&mut self) {
+        let Some(entry) = self.selected_resource().cloned() else {
+            return;
+        };
+        if entry.kind == crate::models::EntryKind::Directory {
+            let prev_dir = if entry.is_parent_link {
+                Some(self.resources.cwd.clone())
+            } else {
+                None
+            };
+            self.resources.cwd = entry.path;
+            self.resources.selected = 0;
+            if self.page == Page::Resources {
+                self.search_active = false;
+                self.search_query.clear();
+            }
+            self.reload_resources();
+            if let Some(prev) = prev_dir {
+                self.select_entry_by_path(&prev);
+            }
+        }
+    }
+
+    /// Navigates to parent directory of `resources.cwd`.
+    pub fn go_parent_resource(&mut self) {
+        if let Some(parent) = self.resources.cwd.parent().map(|p| p.to_path_buf()) {
+            let prev = self.resources.cwd.clone();
+            self.resources.cwd = parent;
+            self.resources.selected = 0;
+            if self.page == Page::Resources {
+                self.search_active = false;
+                self.search_query.clear();
+            }
+            self.reload_resources();
+            self.select_entry_by_path(&prev);
+        }
+    }
+
+    /// Jumps directly to `path` if it is a readable directory.
+    pub fn goto_resource_path(&mut self, path: PathBuf) -> Result<(), String> {
+        if !path.is_dir() {
+            return Err(format!("not a directory: {}", path.display()));
+        }
+        self.resources.cwd = path;
+        self.resources.selected = 0;
+        if self.page == Page::Resources {
+            self.search_active = false;
+            self.search_query.clear();
+        }
+        self.reload_resources();
+        if let Some(err) = &self.resources.load_error {
+            return Err(err.clone());
+        }
+        Ok(())
+    }
+
+    fn select_entry_by_path(&mut self, target: &std::path::Path) {
+        if let Some(idx) = self
+            .active_resource_entries()
+            .iter()
+            .position(|e| e.path == target)
+        {
+            self.resources.selected = idx;
+            self.resources.table.select(Some(idx));
+            self.refresh_selected_acl();
+        }
+    }
+
     /// Clamps selections to the filtered row counts.
     pub fn clamp_selections_to_filtered(&mut self) {
         let u_len = self.filtered_users().len();
@@ -314,6 +514,15 @@ impl App {
         } else {
             Some(self.selections.sessions)
         });
+
+        let r_len = self.active_resource_entries().len();
+        self.resources.selected = self.resources.selected.min(r_len.saturating_sub(1));
+        self.resources.table.select(if r_len == 0 {
+            None
+        } else {
+            Some(self.resources.selected)
+        });
+        self.refresh_selected_acl();
     }
 }
 
