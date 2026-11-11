@@ -162,9 +162,22 @@ fn render_browser(frame: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     } else {
         " [no .*]"
     };
+    let sel_count = app.resources.selected_paths.len();
+    let sel_tag = if sel_count > 0 {
+        format!(" [{sel_count} sel]")
+    } else {
+        String::new()
+    };
+    let clip_tag = app
+        .resources
+        .acl_clipboard
+        .as_ref()
+        .map(|c| format!(" [ACL:{}]", shorten_path(&c.source_label, 14)))
+        .unwrap_or_default();
+    let reserve = 18 + sel_tag.len() + clip_tag.len();
     let cwd_text = shorten_path(
         &app.resources.cwd.display().to_string(),
-        area.width.saturating_sub(18) as usize,
+        (area.width as usize).saturating_sub(reserve),
     );
     let path_line = Line::from(vec![
         Span::styled(
@@ -173,6 +186,8 @@ fn render_browser(frame: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         ),
         Span::styled(cwd_text, crate::ui::theme::title()),
         Span::styled(dot_tag, crate::ui::theme::dim()),
+        Span::styled(sel_tag, crate::ui::theme::accent()),
+        Span::styled(clip_tag, crate::ui::theme::success()),
     ]);
     frame.render_widget(Paragraph::new(path_line), chunks[0]);
     if let Some(err) = &app.resources.load_error {
@@ -201,9 +216,14 @@ fn render_browser(frame: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             } else {
                 format!("{}{}", e.mode_octal(), acl_suffix)
             };
+            let prefix = if !e.is_parent_link && app.resources.selected_paths.contains(&e.path) {
+                "✓ "
+            } else {
+                ""
+            };
             table::RowData {
                 icon: icon_for_entry(e),
-                name: e.name.clone(),
+                name: format!("{prefix}{}", e.name),
                 attr1: mode_str,
                 attr2: if e.is_parent_link {
                     String::new()

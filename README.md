@@ -43,7 +43,7 @@ Jika sudah pernah menginstall, cukup jalankan:
 
 ```sh
 usera update        # atau: sudo usera update (jika di /usr/local/bin)
-usera --version     # cek versi terpasang (v1.1.1)
+usera --version     # cek versi terpasang (v1.2.0)
 usera --help        # ringkasan perintah CLI
 ```
 
@@ -121,15 +121,15 @@ sudo usera    # mode administratif penuh (tulis + audit log)
 | Tombol | Aksi |
 | --- | --- |
 | `F` | Toggle panel Resources di samping `Users` / `Groups` (aktif otomatis jika terminal $\ge 105 \times 24$) |
+| `Space` | Tandai / multi-select beberapa folder atau file untuk aksi batch (`A`/`X`/`B`/`M`/`O`) |
 | `Enter` / `⌫` (`-`) | Masuk direktori / naik ke parent direktori |
-| `G` | Lompat langsung ke path direktori tertentu |
-| `H` | Lompat ke home directory user terpilih *(mode Hybrid di `Users`)* |
-| `.` | Tampilkan / sembunyikan dotfiles (`.env`, `.ssh`, dll.) |
+| `G` / `H` / `.` | Lompat path / lompat ke home user terpilih (Hybrid) / tampilkan-sembunyikan dotfiles |
 | `M` | Ubah mode (`chmod` checkbox 3×3 + `SUID`/`SGID`/`Sticky` + opsi rekursif `YES`) |
 | `O` | Ubah owner/group (`chown -h`, + opsi rekursif `YES`) |
-| `A` | Set/tambah POSIX ACL (`setfacl -m`: Scope `User`/`Group`/`Mask`/`Other`, autocomplete 1+ huruf, `r/w/x`, `Default d:`, rekursif `YES`) |
+| `A` | Set/edit POSIX ACL (`setfacl -m`: Scope, autocomplete 1+ huruf via `Enter`/`Tab`, auto-load ACL aktif, `r/w/x/X`, `Access` & `Default d:` sekaligus) |
 | `X` | Hapus POSIX ACL (`setfacl -x` / `-k` lewat checklist entri aktif) |
 | `B` | Bersihkan seluruh extended ACL (`setfacl -b`, konfirmasi `YES`) |
+| `C` / `V` | Salin ACL dari item (`getfacl -c -p -P`) / tempel ACL ke target tunggal atau multi-select (`setfacl --set-file=-`, konfirmasi `YES`) |
 
 ---
 
@@ -146,8 +146,7 @@ sudo usera    # mode administratif penuh (tulis + audit log)
 
 | Properti | Keterangan |
 | --- | --- |
-| Versi Saat Ini | `1.1.1` (lihat [CHANGELOG.md](CHANGELOG.md)) |
-| Bahasa & UI | Rust (`edition 2021`, MSRV `1.88`) + Ratatui `0.30` + Crossterm `0.29` |
+| Versi Saat Ini | `1.2.0` (lihat [CHANGELOG.md](CHANGELOG.md)) |
 | Platform Target | Debian 12 (bookworm) & Debian 13 (trixie), `x86_64` |
 | Integrasi Sistem | `getent`, `uname`, `loginctl`, `useradd`/`usermod`/`userdel`, `groupadd`/`groupmod`/`groupdel`, `gpasswd`, `passwd`, `chage`, `chpasswd`, `chmod`, `chown`, `getfacl`/`setfacl` |
 | Lisensi | MIT |

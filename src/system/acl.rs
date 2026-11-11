@@ -126,46 +126,97 @@ pub fn parse_getfacl_output(text: &str) -> Vec<AclEntry> {
 }
 
 /// Applies `setfacl [-R] -m <spec> -- <path>`.
-pub fn set_acl(path: &Path, spec: &str, recursive: bool) -> Result<(), AppError> {
-    let path_str = path.to_string_lossy();
-    let args: Vec<&str> = if recursive {
-        vec!["-R", "-m", spec, "--", &path_str]
-    } else {
-        vec!["-m", spec, "--", &path_str]
-    };
-    run_setfacl(&args)
+pub fn set_acl(paths: &[PathBuf], spec: &str, recursive: bool) -> Result<(), AppError> {
+    run_setfacl_paths(paths, &["-m", spec], recursive)
 }
 
-/// Removes an entry via `setfacl [-R] -x <spec> -- <path>`.
-pub fn remove_acl(path: &Path, spec: &str, recursive: bool) -> Result<(), AppError> {
-    let path_str = path.to_string_lossy();
-    let args: Vec<&str> = if recursive {
-        vec!["-R", "-x", spec, "--", &path_str]
-    } else {
-        vec!["-x", spec, "--", &path_str]
-    };
-    run_setfacl(&args)
+/// Removes an entry via `setfacl [-R] -x <spec> -- <paths...>`.
+pub fn remove_acl(paths: &[PathBuf], spec: &str, recursive: bool) -> Result<(), AppError> {
+    run_setfacl_paths(paths, &["-x", spec], recursive)
 }
 
-/// Strips all default ACL entries (`setfacl [-R] -k -- <path>`).
-pub fn clear_default_acl(path: &Path, recursive: bool) -> Result<(), AppError> {
-    let path_str = path.to_string_lossy();
-    let args: Vec<&str> = if recursive {
-        vec!["-R", "-k", "--", &path_str]
-    } else {
-        vec!["-k", "--", &path_str]
-    };
-    run_setfacl(&args)
+/// Strips all default ACL entries (`setfacl [-R] -k -- <paths...>`).
+pub fn clear_default_acl(paths: &[PathBuf], recursive: bool) -> Result<(), AppError> {
+    run_setfacl_paths(paths, &["-k"], recursive)
 }
-/// Strips all extended ACL entries via `setfacl [-R] -b -- <path>`.
-pub fn clear_acl(path: &Path, recursive: bool) -> Result<(), AppError> {
+
+/// Strips all extended ACL entries via `setfacl [-R] -b -- <paths...>`.
+pub fn clear_acl(paths: &[PathBuf], recursive: bool) -> Result<(), AppError> {
+    run_setfacl_paths(paths, &["-b"], recursive)
+}
+
+/// Exports headerless ACL rules (`getfacl -c -p -P -- <path>`) suitable for `--set-file=-`.
+pub fn export_acl(path: &Path) -> Result<String, AppError> {
     let path_str = path.to_string_lossy();
-    let args: Vec<&str> = if recursive {
-        vec!["-R", "-b", "--", &path_str]
-    } else {
-        vec!["-b", "--", &path_str]
-    };
-    run_setfacl(&args)
+    let out = command::run("getfacl", &["-c", "-p", "-P", "--", &path_str])?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(AppError::Io(if stderr.is_empty() {
+            format!("getfacl exited with status {}", out.status)
+        } else {
+            stderr
+        }));
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+    if lines.is_empty() {
+        return Err(AppError::Io("no ACL rules returned by getfacl".to_string()));
+    }
+    Ok(lines.join("\n"))
+}
+
+/// Replaces ACLs on `paths` by piping `acl_text` to `setfacl [-R] --set-file=-`.
+pub fn apply_acl_text(paths: &[PathBuf], acl_text: &str, recursive: bool) -> Result<(), AppError> {
+    let payload = format!("{}\n", acl_text.trim());
+    for chunk in paths.chunks(200) {
+        let mut args: Vec<&str> = Vec::with_capacity(3 + chunk.len());
+        if recursive {
+            args.push("-R");
+        }
+        args.push("--set-file=-");
+        args.push("--");
+        let strs: Vec<String> = chunk
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        for s in &strs {
+            args.push(s.as_str());
+        }
+        let out = command::run_with_stdin("setfacl", &args, &payload)?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(AppError::Io(if stderr.is_empty() {
+                format!("setfacl exited with status {}", out.status)
+            } else {
+                stderr
+            }));
+        }
+    }
+    Ok(())
+}
+
+fn run_setfacl_paths(paths: &[PathBuf], op_args: &[&str], recursive: bool) -> Result<(), AppError> {
+    for chunk in paths.chunks(200) {
+        let mut args: Vec<&str> = Vec::with_capacity(2 + op_args.len() + chunk.len());
+        if recursive {
+            args.push("-R");
+        }
+        args.extend_from_slice(op_args);
+        args.push("--");
+        let strs: Vec<String> = chunk
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        for s in &strs {
+            args.push(s.as_str());
+        }
+        run_setfacl(&args)?;
+    }
+    Ok(())
 }
 
 fn run_setfacl(args: &[&str]) -> Result<(), AppError> {
@@ -228,5 +279,33 @@ group::r--
         assert!(set.contains(&PathBuf::from("/var/www/app")));
         assert!(set.contains(&PathBuf::from("/var/www/with space")));
         assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn exports_and_clones_acl_text_across_temp_dirs() {
+        let base = std::env::temp_dir().join(format!("usera_acl_clone_sys_{}", std::process::id()));
+        let src = base.join("src");
+        let dst = base.join("dst");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&dst).unwrap();
+
+        set_acl(&[src.clone()], "u:root:rwx,d:u:root:rwx", false).expect("setfacl works");
+        let exported = export_acl(&src).expect("export_acl works");
+        assert!(exported.contains("user:root:rwx"));
+        assert!(exported.contains("default:user:root:rwx"));
+
+        apply_acl_text(&[dst.clone()], &exported, false).expect("apply_acl_text works");
+        let dst_acl = read_acl(&dst);
+        assert!(dst_acl
+            .entries
+            .iter()
+            .any(|e| !e.is_default && e.scope == AclScope::User && e.qualifier == "root"));
+        assert!(dst_acl
+            .entries
+            .iter()
+            .any(|e| e.is_default && e.scope == AclScope::User && e.qualifier == "root"));
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

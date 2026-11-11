@@ -53,6 +53,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             if !app.search_query.is_empty() {
                 app.search_query.clear();
                 app.clamp_selections_to_filtered();
+            } else if !app.resources.selected_paths.is_empty() {
+                app.clear_selected_resources();
             } else {
                 app.notification = None;
             }
@@ -162,7 +164,14 @@ fn handle_modal_key(app: &mut App, key: KeyEvent) {
     if let Some(ModalKind::SetAcl(state)) = &mut app.modal.kind {
         match key.code {
             KeyCode::Esc => app.modal.close(),
-            KeyCode::Enter => submit_modal(app),
+            KeyCode::Enter => {
+                if state.row == 1 && !state.filtered_suggestions().is_empty() {
+                    let _ = state.accept_suggestion();
+                    state.move_row(1);
+                } else {
+                    submit_modal(app);
+                }
+            }
             KeyCode::Tab => {
                 if state.row == 1 {
                     let _ = state.accept_suggestion();
@@ -196,14 +205,20 @@ fn handle_modal_key(app: &mut App, key: KeyEvent) {
             KeyCode::Char(c) if state.row == 1 => state.push_char(c),
             KeyCode::Char('r' | 'R') => {
                 if state.row == 2 {
-                    state.toggle_perm(0);
-                } else if state.row == 4 {
+                    state.toggle_read();
+                } else if state.row == 5 {
                     state.toggle();
                 }
             }
-            KeyCode::Char('w' | 'W') if state.row == 2 => state.toggle_perm(1),
-            KeyCode::Char('x' | 'X') if state.row == 2 => state.toggle_perm(2),
-            KeyCode::Char('d' | 'D') if state.row == 3 => state.toggle(),
+            KeyCode::Char('w' | 'W') if state.row == 2 => state.toggle_write(),
+            KeyCode::Char('x') if state.row == 2 => {
+                state.set_exec(form_modal::ExecPerm::Always);
+            }
+            KeyCode::Char('X') if state.row == 2 => {
+                state.set_exec(form_modal::ExecPerm::Conditional);
+            }
+            KeyCode::Char('a' | 'A') if state.row == 3 => state.toggle(),
+            KeyCode::Char('d' | 'D') if state.row == 4 => state.toggle(),
             _ => {}
         }
         return;
@@ -216,6 +231,23 @@ fn handle_modal_key(app: &mut App, key: KeyEvent) {
             KeyCode::Up | KeyCode::BackTab => state.move_row(-1),
             KeyCode::Down | KeyCode::Tab => state.move_row(1),
             KeyCode::Char(' ') => state.toggle(),
+            _ => {}
+        }
+        return;
+    }
+
+    if let Some(ModalKind::PasteAcl(state)) = &mut app.modal.kind {
+        match key.code {
+            KeyCode::Esc => app.modal.close(),
+            KeyCode::Enter => submit_modal(app),
+            KeyCode::Up | KeyCode::BackTab => state.move_row(-1),
+            KeyCode::Down | KeyCode::Tab => state.move_row(1),
+            KeyCode::Left => state.move_col(-1),
+            KeyCode::Right => state.move_col(1),
+            KeyCode::Backspace => state.backspace(),
+            KeyCode::Delete => state.delete(),
+            KeyCode::Char(' ') => state.toggle_recursive(),
+            KeyCode::Char(c) => state.push_char(c),
             _ => {}
         }
         return;
@@ -398,6 +430,7 @@ fn handle_resource_key(app: &mut App, code: KeyCode) {
     match code {
         KeyCode::Down => app.move_resource_selection(1),
         KeyCode::Up => app.move_resource_selection(-1),
+        KeyCode::Char(' ') => app.toggle_select_resource(),
         KeyCode::Enter => app.open_selected_resource(),
         KeyCode::Backspace | KeyCode::Char('-') => app.go_parent_resource(),
         KeyCode::Char('.') => app.toggle_hidden_resources(),
@@ -410,6 +443,8 @@ fn handle_resource_key(app: &mut App, code: KeyCode) {
         KeyCode::Char('a' | 'A') => open_set_acl(app),
         KeyCode::Char('x' | 'X') => open_remove_acl(app),
         KeyCode::Char('b' | 'B') => open_clear_acl(app),
+        KeyCode::Char('c' | 'C') => copy_selected_acl(app),
+        KeyCode::Char('v' | 'V') => open_paste_acl(app),
         _ => {}
     }
 }
@@ -432,34 +467,49 @@ fn open_goto_path(app: &mut App) {
 }
 
 fn open_chmod(app: &mut App) {
-    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+    let targets = app.target_resource_entries();
+    if targets.is_empty() {
         app.notify(false, "select a file or directory first");
         return;
-    };
-    let path = entry.path.display().to_string();
-    let mode = entry.mode;
-    let is_dir = entry.kind == crate::models::EntryKind::Directory;
-    app.modal = form_modal::Modal::chmod(path, mode, is_dir);
+    }
+    let paths: Vec<std::path::PathBuf> = targets.iter().map(|e| e.path.clone()).collect();
+    let mode = targets[0].mode;
+    let is_dir = targets
+        .iter()
+        .any(|e| e.kind == crate::models::EntryKind::Directory);
+    app.modal = form_modal::Modal::chmod(paths, mode, is_dir);
 }
 
 fn open_chown(app: &mut App) {
-    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+    let targets = app.target_resource_entries();
+    if targets.is_empty() {
         app.notify(false, "select a file or directory first");
         return;
-    };
-    let path = entry.path.display().to_string();
-    let owner = entry.owner_label();
-    let is_dir = entry.kind == crate::models::EntryKind::Directory;
-    app.modal = form_modal::Modal::chown(path, &owner, is_dir);
+    }
+    let paths: Vec<std::path::PathBuf> = targets.iter().map(|e| e.path.clone()).collect();
+    let owner = targets[0].owner_label();
+    let is_dir = targets
+        .iter()
+        .any(|e| e.kind == crate::models::EntryKind::Directory);
+    app.modal = form_modal::Modal::chown(paths, &owner, is_dir);
 }
 
 fn open_set_acl(app: &mut App) {
-    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+    let targets = app.target_resource_entries();
+    if targets.is_empty() {
         app.notify(false, "select a file or directory first");
         return;
+    }
+    let paths: Vec<std::path::PathBuf> = targets.iter().map(|e| e.path.clone()).collect();
+    let is_dir = targets
+        .iter()
+        .any(|e| e.kind == crate::models::EntryKind::Directory);
+    let existing_acl = if app.selected_resource().is_some_and(|e| e.path == paths[0]) {
+        app.resources.selected_acl.clone()
+    } else {
+        crate::services::resource_service::read_acl(&paths[0])
     };
-    let path = entry.path.display().to_string();
-    let is_dir = entry.kind == crate::models::EntryKind::Directory;
+
     let users: Vec<form_modal::CandidateItem> = app
         .data
         .users
@@ -500,20 +550,41 @@ fn open_set_acl(app: &mut App) {
     } else {
         (form_modal::AclTargetScope::User, String::new())
     };
-    app.modal = form_modal::Modal::set_acl(path, scope, &prefill_name, is_dir, users, groups);
+    app.modal = form_modal::Modal::set_acl(
+        paths,
+        scope,
+        &prefill_name,
+        is_dir,
+        users,
+        groups,
+        existing_acl,
+    );
 }
 
 fn open_remove_acl(app: &mut App) {
-    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+    let targets = app.target_resource_entries();
+    if targets.is_empty() {
         app.notify(false, "select a file or directory first");
         return;
-    };
-    if !app.resources.selected_acl.available {
+    }
+    let paths: Vec<std::path::PathBuf> = targets.iter().map(|e| e.path.clone()).collect();
+    let is_dir = targets
+        .iter()
+        .any(|e| e.kind == crate::models::EntryKind::Directory);
+    let acls: Vec<crate::models::AclInfo> = paths
+        .iter()
+        .map(|p| {
+            if app.selected_resource().is_some_and(|e| &e.path == p) {
+                app.resources.selected_acl.clone()
+            } else {
+                crate::services::resource_service::read_acl(p)
+            }
+        })
+        .collect();
+    if acls.iter().all(|a| !a.available) {
         app.notify(false, "getfacl unavailable — install `acl` package");
         return;
     }
-    let path = entry.path.display().to_string();
-    let is_dir = entry.kind == crate::models::EntryKind::Directory;
     let pre_user = if app.hybrid_active && app.page == Page::Users {
         app.selected_user().map(|u| u.name.as_str())
     } else {
@@ -524,15 +595,10 @@ fn open_remove_acl(app: &mut App) {
     } else {
         None
     };
-    let state = form_modal::RemoveAclState::from_acl(
-        path.clone(),
-        is_dir,
-        &app.resources.selected_acl,
-        pre_user,
-        pre_group,
-    );
+    let state =
+        form_modal::RemoveAclState::from_acls(paths.clone(), is_dir, &acls, pre_user, pre_group);
     if state.items.is_empty() {
-        if app.resources.selected_acl.has_extended_acl() {
+        if acls.iter().any(|a| a.has_extended_acl()) {
             app.notify(
                 false,
                 "only mask/base ACL entries remain — press B to clear all extended ACLs",
@@ -540,7 +606,10 @@ fn open_remove_acl(app: &mut App) {
         } else {
             app.notify(
                 false,
-                format!("no extended ACL entries to remove on {path}"),
+                format!(
+                    "no extended ACL entries to remove on {}",
+                    form_modal::format_paths_title(&paths)
+                ),
             );
         }
         return;
@@ -549,15 +618,67 @@ fn open_remove_acl(app: &mut App) {
 }
 
 fn open_clear_acl(app: &mut App) {
-    let Some(entry) = app.selected_resource().filter(|e| !e.is_parent_link) else {
+    let targets = app.target_resource_entries();
+    if targets.is_empty() {
         app.notify(false, "select a file or directory first");
         return;
-    };
-    let path = entry.path.display().to_string();
+    }
+    let paths: Vec<std::path::PathBuf> = targets.iter().map(|e| e.path.clone()).collect();
+    let label = form_modal::format_paths_title(&paths);
     app.modal = form_modal::Modal::confirm(
-        ModalKind::ConfirmClearAcl(path.clone()),
-        &format!("Clear all extended ACLs on '{path}'? Type YES."),
+        ModalKind::ConfirmClearAcl(paths),
+        &format!("Clear all extended ACLs on '{label}'? Type YES."),
     );
+}
+
+fn copy_selected_acl(app: &mut App) {
+    let Some(entry) = app
+        .selected_resource()
+        .filter(|e| !e.is_parent_link)
+        .cloned()
+    else {
+        app.notify(false, "select a file or directory to copy its ACL");
+        return;
+    };
+    match crate::services::resource_service::export_acl(&entry.path) {
+        Ok(rules_text) => {
+            let rule_count = rules_text.lines().count();
+            app.resources.acl_clipboard = Some(crate::app::CopiedAcl {
+                source_label: entry.name.clone(),
+                rules_text,
+                rule_count,
+            });
+            app.notify(
+                true,
+                format!("copied ACL from '{}' ({rule_count} rules)", entry.name),
+            );
+        }
+        Err(err) => app.notify(false, err),
+    }
+}
+
+fn open_paste_acl(app: &mut App) {
+    let Some(clip) = app.resources.acl_clipboard.clone() else {
+        app.notify(false, "ACL clipboard empty — press C on an item first");
+        return;
+    };
+    let targets = app.target_resource_entries();
+    if targets.is_empty() {
+        app.notify(false, "select target file(s) or directory(s) first");
+        return;
+    }
+    let paths: Vec<std::path::PathBuf> = targets.iter().map(|e| e.path.clone()).collect();
+    let is_dir = targets
+        .iter()
+        .any(|e| e.kind == crate::models::EntryKind::Directory);
+    let state = form_modal::PasteAclState::new(
+        paths,
+        is_dir,
+        clip.source_label,
+        clip.rules_text,
+        clip.rule_count,
+    );
+    app.modal = form_modal::Modal::paste_acl(state);
 }
 
 // --- Modal submission -------------------------------------------------
@@ -724,16 +845,14 @@ fn submit_modal(app: &mut App) {
         },
         ModalKind::GoToPath => unreachable!("handled before root gate"),
         ModalKind::Chmod(state) => submit_chmod(app, state),
-        ModalKind::Chown { path, is_dir } => submit_chown(app, path, is_dir),
+        ModalKind::Chown { paths, is_dir } => submit_chown(app, paths, is_dir),
         ModalKind::SetAcl(state) => submit_set_acl(app, state),
         ModalKind::RemoveAcl(state) => submit_remove_acl(app, state),
-        ModalKind::ConfirmClearAcl(path) => {
+        ModalKind::PasteAcl(state) => submit_paste_acl(app, state),
+        ModalKind::ConfirmClearAcl(paths) => {
             if confirmed(app) {
-                let res = crate::services::resource_service::clear_acl(
-                    std::path::Path::new(&path),
-                    false,
-                );
-                audit_and_finish(app, "clear_acl", &path, res);
+                let res = crate::services::resource_service::clear_acl(&paths, false);
+                audit_resources_and_finish(app, "clear_acl", &paths, res);
             } else {
                 refuse_confirmation(app);
             }
@@ -757,15 +876,16 @@ fn wants_recursive(app: &App, is_dir: bool) -> bool {
             .is_some_and(|f| matches!(f.value.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
 }
 
-fn prompt_recursive(app: &mut App, path: &str, op: form_modal::RecursiveOp) {
-    let p = std::path::Path::new(path);
-    if let Err(res) = crate::services::resource_service::guard_recursive_path(p) {
+fn prompt_recursive(app: &mut App, paths: &[std::path::PathBuf], op: form_modal::RecursiveOp) {
+    if let Err(res) = crate::services::resource_service::guard_recursive_paths(paths) {
         app.modal.error = Some(res.message);
         return;
     }
-    let (count, truncated) = crate::services::resource_service::count_recursive_items(p, 1000);
+    let (count, truncated) =
+        crate::services::resource_service::count_recursive_items_many(paths, 1000);
+    let label = form_modal::format_paths_title(paths);
     let msg = format!(
-        "Apply recursively to '{path}' ({}{} items)? Type YES.",
+        "Apply recursively to '{label}' ({}{} items)? Type YES.",
         count,
         if truncated { "+" } else { "" }
     );
@@ -773,25 +893,24 @@ fn prompt_recursive(app: &mut App, path: &str, op: form_modal::RecursiveOp) {
 }
 
 fn submit_chmod(app: &mut App, state: form_modal::ChmodState) {
-    let path = state.path.clone();
+    let paths = state.paths.clone();
     let mode = state.octal_string();
     if state.recursive {
         prompt_recursive(
             app,
-            &path,
+            &paths,
             form_modal::RecursiveOp::Chmod {
-                path: path.clone(),
+                paths: paths.clone(),
                 mode,
             },
         );
         return;
     }
-    let res =
-        crate::services::resource_service::set_mode(std::path::Path::new(&path), &mode, false);
-    audit_and_finish(app, "chmod", &path, res);
+    let res = crate::services::resource_service::set_mode(&paths, &mode, false);
+    audit_resources_and_finish(app, "chmod", &paths, res);
 }
 
-fn submit_chown(app: &mut App, path: String, is_dir: bool) {
+fn submit_chown(app: &mut App, paths: Vec<std::path::PathBuf>, is_dir: bool) {
     let raw_owner = app.modal.fields[0].value.trim().to_string();
     let owner = match crate::models::resource::validate_owner(&raw_owner) {
         Ok(o) => o,
@@ -803,46 +922,54 @@ fn submit_chown(app: &mut App, path: String, is_dir: bool) {
     if wants_recursive(app, is_dir) {
         prompt_recursive(
             app,
-            &path,
+            &paths,
             form_modal::RecursiveOp::Chown {
-                path: path.clone(),
+                paths: paths.clone(),
                 owner,
             },
         );
         return;
     }
-    let res =
-        crate::services::resource_service::set_owner(std::path::Path::new(&path), &owner, false);
-    audit_and_finish(app, "chown", &path, res);
+    let res = crate::services::resource_service::set_owner(&paths, &owner, false);
+    audit_resources_and_finish(app, "chown", &paths, res);
 }
 
 fn submit_set_acl(app: &mut App, state: form_modal::SetAclState) {
-    let path = state.path.clone();
-    let raw_spec = state.build_spec();
-    let spec = match crate::models::resource::validate_acl_spec(&raw_spec) {
-        Ok(s) => s,
-        Err(err) => {
-            app.modal.error = Some(err);
-            return;
-        }
-    };
-    if state.recursive {
-        prompt_recursive(
-            app,
-            &path,
-            form_modal::RecursiveOp::SetAcl {
-                path: path.clone(),
-                spec,
+    let paths = state.paths.clone();
+    let specs = state.build_specs();
+    if specs.is_empty() {
+        app.modal.error = Some(
+            if state.scope.needs_name() && state.name.trim().is_empty() {
+                "select or enter target name".to_string()
+            } else {
+                "enable Access and/or Default ACL".to_string()
             },
         );
         return;
     }
-    let res = crate::services::resource_service::set_acl(std::path::Path::new(&path), &spec, false);
-    audit_and_finish(app, "set_acl", &path, res);
+    for s in &specs {
+        if let Err(err) = crate::models::resource::validate_acl_spec(s) {
+            app.modal.error = Some(err);
+            return;
+        }
+    }
+    if state.recursive {
+        prompt_recursive(
+            app,
+            &paths,
+            form_modal::RecursiveOp::SetAcl {
+                paths: paths.clone(),
+                specs,
+            },
+        );
+        return;
+    }
+    let res = crate::services::resource_service::set_acl_many(&paths, &specs, false);
+    audit_resources_and_finish(app, "set_acl", &paths, res);
 }
 
 fn submit_remove_acl(app: &mut App, state: form_modal::RemoveAclState) {
-    let path = state.path.clone();
+    let paths = state.paths.clone();
     let specs = state.selected_specs();
     let clear_default = state.wants_clear_default();
     if specs.is_empty() && !clear_default {
@@ -852,64 +979,96 @@ fn submit_remove_acl(app: &mut App, state: form_modal::RemoveAclState) {
     if state.recursive {
         prompt_recursive(
             app,
-            &path,
+            &paths,
             form_modal::RecursiveOp::RemoveAcl {
-                path: path.clone(),
+                paths: paths.clone(),
                 specs,
                 clear_default,
             },
         );
         return;
     }
-    let res = crate::services::resource_service::remove_acl_many(
-        std::path::Path::new(&path),
-        &specs,
-        clear_default,
-        false,
+    let res =
+        crate::services::resource_service::remove_acl_many(&paths, &specs, clear_default, false);
+    audit_resources_and_finish(app, "remove_acl", &paths, res);
+}
+
+fn submit_paste_acl(app: &mut App, state: form_modal::PasteAclState) {
+    if !state.is_confirmed() {
+        app.modal.error = Some("type YES to confirm overwriting target ACLs".to_string());
+        return;
+    }
+    if state.recursive {
+        if let Err(res) = crate::services::resource_service::guard_recursive_paths(&state.paths) {
+            app.modal.error = Some(res.message);
+            return;
+        }
+    }
+    let res = crate::services::resource_service::paste_acl(
+        &state.paths,
+        &state.acl_text,
+        state.recursive,
     );
-    audit_and_finish(app, "remove_acl", &path, res);
+    let op = if state.recursive {
+        "paste_acl_recursive"
+    } else {
+        "paste_acl"
+    };
+    audit_resources_and_finish(app, op, &state.paths, res);
 }
 
 fn submit_recursive_op(app: &mut App, op: form_modal::RecursiveOp) {
     match op {
-        form_modal::RecursiveOp::Chmod { path, mode } => {
-            let res = crate::services::resource_service::set_mode(
-                std::path::Path::new(&path),
-                &mode,
-                true,
-            );
-            audit_and_finish(app, "chmod_recursive", &path, res);
+        form_modal::RecursiveOp::Chmod { paths, mode } => {
+            let res = crate::services::resource_service::set_mode(&paths, &mode, true);
+            audit_resources_and_finish(app, "chmod_recursive", &paths, res);
         }
-        form_modal::RecursiveOp::Chown { path, owner } => {
-            let res = crate::services::resource_service::set_owner(
-                std::path::Path::new(&path),
-                &owner,
-                true,
-            );
-            audit_and_finish(app, "chown_recursive", &path, res);
+        form_modal::RecursiveOp::Chown { paths, owner } => {
+            let res = crate::services::resource_service::set_owner(&paths, &owner, true);
+            audit_resources_and_finish(app, "chown_recursive", &paths, res);
         }
-        form_modal::RecursiveOp::SetAcl { path, spec } => {
-            let res = crate::services::resource_service::set_acl(
-                std::path::Path::new(&path),
-                &spec,
-                true,
-            );
-            audit_and_finish(app, "set_acl_recursive", &path, res);
+        form_modal::RecursiveOp::SetAcl { paths, specs } => {
+            let res = crate::services::resource_service::set_acl_many(&paths, &specs, true);
+            audit_resources_and_finish(app, "set_acl_recursive", &paths, res);
         }
         form_modal::RecursiveOp::RemoveAcl {
-            path,
+            paths,
             specs,
             clear_default,
         } => {
             let res = crate::services::resource_service::remove_acl_many(
-                std::path::Path::new(&path),
+                &paths,
                 &specs,
                 clear_default,
                 true,
             );
-            audit_and_finish(app, "remove_acl_recursive", &path, res);
+            audit_resources_and_finish(app, "remove_acl_recursive", &paths, res);
         }
     }
+}
+
+fn audit_resources_and_finish(
+    app: &mut App,
+    operation: &'static str,
+    paths: &[std::path::PathBuf],
+    mut res: crate::services::user_service::OpResult,
+) {
+    let mut audit_err = None;
+    for p in paths {
+        let target = p.display().to_string();
+        let entry =
+            crate::system::audit::AuditEntry::from_result(operation, &target, res.ok, &res.message);
+        if let Err(err) = crate::system::audit::record(&entry) {
+            audit_err = Some(err);
+        }
+    }
+    if res.ok {
+        app.clear_selected_resources();
+    }
+    if let Some(err) = audit_err {
+        res.message = format!("{} (audit log: {err})", res.message);
+    }
+    finish(app, res);
 }
 
 /// Parses the comma-separated user list from the first form field.
@@ -1338,7 +1497,7 @@ mod tests {
                 Some(form_modal::ModalKind::SetAcl(st)) => {
                     assert_eq!(st.scope, form_modal::AclTargetScope::User);
                     assert_eq!(st.name, expected_user);
-                    assert_eq!(st.build_spec(), format!("u:{expected_user}:rw-"));
+                    assert_eq!(st.build_specs(), vec![format!("u:{expected_user}:rw-")]);
                 }
                 other => panic!("expected SetAcl modal, got {other:?}"),
             }
@@ -1356,12 +1515,11 @@ mod tests {
     fn recursive_chmod_refuses_protected_system_paths_in_modal() {
         let mut app = App::default();
         app.data.is_root = true;
-        app.modal = form_modal::Modal::chmod("/etc".into(), 0o0755, true);
-        // Move to row 3 (Recursive) and toggle with Space
+        app.modal = form_modal::Modal::chmod(vec![std::path::PathBuf::from("/etc")], 0o0755, true);
+        // Move to row 4 (Recursive) and toggle with Space
         handle_key(&mut app, key_press(KeyCode::Up));
         handle_key(&mut app, key_press(KeyCode::Char(' ')));
         handle_key(&mut app, key_press(KeyCode::Enter));
-        assert!(app.modal.is_open());
         assert!(app
             .modal
             .error
@@ -1373,7 +1531,8 @@ mod tests {
     #[test]
     fn chmod_modal_checkbox_navigation_updates_mode() {
         let mut app = App::default();
-        app.modal = form_modal::Modal::chmod("/tmp/demo".into(), 0o0640, false);
+        app.modal =
+            form_modal::Modal::chmod(vec![std::path::PathBuf::from("/tmp/demo")], 0o0640, false);
 
         // Toggle Owner Execute (row 0, col 2) using right arrows + Space -> 0740
         handle_key(&mut app, key_press(KeyCode::Right));
@@ -1470,15 +1629,166 @@ mod tests {
         // Type 'd' then 'e', then press Tab to autocomplete 'deploy' and move to Perms row
         handle_key(&mut app, key_press(KeyCode::Char('d')));
         handle_key(&mut app, key_press(KeyCode::Char('e')));
-        handle_key(&mut app, key_press(KeyCode::Tab));
+        // Press Enter when dropdown is visible: selects 'deploy' and moves to Perms (does NOT submit!)
+        handle_key(&mut app, key_press(KeyCode::Enter));
+        assert!(app.modal.is_open());
 
         match &app.modal.kind {
             Some(form_modal::ModalKind::SetAcl(st)) => {
                 assert_eq!(st.name, "deploy");
                 assert_eq!(st.row, 2);
-                assert_eq!(st.build_spec(), "u:deploy:rw-");
+                assert_eq!(st.build_specs(), vec!["u:deploy:rw-".to_string()]);
             }
             other => panic!("expected SetAcl modal, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn set_acl_loads_existing_perms_and_supports_capital_x_and_multi_select() {
+        use crate::models::{AclEntry, AclInfo, AclScope};
+
+        let base =
+            std::env::temp_dir().join(format!("usera_multi_acl_test_{}", std::process::id()));
+        let d1 = base.join("dir_a");
+        let d2 = base.join("dir_b");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&d1).unwrap();
+        std::fs::create_dir_all(&d2).unwrap();
+
+        let mut app = App::default();
+        app.page = Page::Resources;
+        app.focus = Focus::Content;
+        app.data.users = vec![crate::models::User {
+            name: "deploy".into(),
+            uid: 1001,
+            gid: 1001,
+            gecos: String::new(),
+            home: "/home/deploy".into(),
+            shell: "/bin/bash".into(),
+            supplementary_groups: vec![],
+        }];
+        app.goto_resource_path(base.clone()).unwrap();
+
+        // Move down past '..' to dir_a, press Space (marks dir_a and advances to dir_b), press Space
+        handle_key(&mut app, key_press(KeyCode::Down));
+        handle_key(&mut app, key_press(KeyCode::Char(' ')));
+        handle_key(&mut app, key_press(KeyCode::Char(' ')));
+        assert_eq!(app.resources.selected_paths.len(), 2);
+        assert!(app.resources.selected_paths.contains(&d1));
+        assert!(app.resources.selected_paths.contains(&d2));
+
+        // Inject existing ACL for 'deploy' (r-x access + default) on selected_acl
+        app.resources.selected_acl = AclInfo {
+            available: true,
+            entries: vec![
+                AclEntry {
+                    is_default: false,
+                    scope: AclScope::User,
+                    qualifier: "deploy".into(),
+                    perms: "r-x".into(),
+                    effective: None,
+                },
+                AclEntry {
+                    is_default: true,
+                    scope: AclScope::User,
+                    qualifier: "deploy".into(),
+                    perms: "r-x".into(),
+                    effective: None,
+                },
+            ],
+            error: None,
+        };
+        app.resources.selected = 1; // dir_a
+
+        // Press 'a' -> multi-target modal opens with 2 paths
+        handle_key(&mut app, key_press(KeyCode::Char('a')));
+        // Type 'de' and press Enter -> selects 'deploy', loads existing r-x + Access & Default!
+        handle_key(&mut app, key_press(KeyCode::Char('d')));
+        handle_key(&mut app, key_press(KeyCode::Char('e')));
+        handle_key(&mut app, key_press(KeyCode::Enter));
+        // Switch Exec to Conditional capital 'X'
+        handle_key(&mut app, key_press(KeyCode::Char('X')));
+
+        match &app.modal.kind {
+            Some(form_modal::ModalKind::SetAcl(st)) => {
+                assert_eq!(st.paths.len(), 2);
+                assert!(st.loaded_existing);
+                assert!(st.read && !st.write);
+                assert_eq!(st.exec, form_modal::ExecPerm::Conditional);
+                assert_eq!(st.build_specs(), vec!["u:deploy:r-X", "d:u:deploy:r-X"]);
+            }
+            other => panic!("expected SetAcl modal, got {other:?}"),
+        }
+        app.modal.close();
+
+        // Esc clears multi-select
+        handle_key(&mut app, key_press(KeyCode::Esc));
+        assert!(app.resources.selected_paths.is_empty());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn copy_and_paste_acl_clones_from_source_and_guards_protected_recursive() {
+        let base = std::env::temp_dir().join(format!("usera_copy_paste_{}", std::process::id()));
+        let src = base.join("src_dir");
+        let dst = base.join("dst_dir");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&dst).unwrap();
+        crate::system::acl::set_acl(&[src.clone()], "u:root:rwx,d:u:root:rwx", false).unwrap();
+
+        let mut app = App::default();
+        app.page = Page::Resources;
+        app.focus = Focus::Content;
+        app.data.is_root = true;
+        app.goto_resource_path(base.clone()).unwrap();
+
+        // Copy from src_dir (C)
+        let src_idx = app
+            .active_resource_entries()
+            .iter()
+            .position(|e| e.path == src)
+            .unwrap();
+        app.resources.selected = src_idx;
+        handle_key(&mut app, key_press(KeyCode::Char('c')));
+        let clip = app.resources.acl_clipboard.as_ref().expect("ACL copied");
+        assert_eq!(clip.source_label, "src_dir");
+        assert!(clip.rules_text.contains("user:root:rwx"));
+
+        // Move to dst_dir and press V -> PasteAcl modal opens
+        let dst_idx = app
+            .active_resource_entries()
+            .iter()
+            .position(|e| e.path == dst)
+            .unwrap();
+        app.resources.selected = dst_idx;
+        handle_key(&mut app, key_press(KeyCode::Char('v')));
+        match &app.modal.kind {
+            Some(form_modal::ModalKind::PasteAcl(st)) => {
+                assert_eq!(st.paths, vec![dst.clone()]);
+                assert_eq!(st.source_label, "src_dir");
+            }
+            other => panic!("expected PasteAcl modal, got {other:?}"),
+        }
+
+        // Submitting without YES keeps modal open with inline error
+        handle_key(&mut app, key_press(KeyCode::Enter));
+        assert!(app.modal.is_open());
+        assert!(app.modal.error.as_deref().unwrap_or("").contains("YES"));
+
+        // Typing YES and pressing Enter pastes ACL onto dst_dir cleanly
+        for c in "YES".chars() {
+            handle_key(&mut app, key_press(KeyCode::Char(c)));
+        }
+        handle_key(&mut app, key_press(KeyCode::Enter));
+        assert!(!app.modal.is_open());
+        let dst_acl = crate::services::resource_service::read_acl(&dst);
+        assert!(dst_acl
+            .entries
+            .iter()
+            .any(|e| !e.is_default && e.qualifier == "root"));
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

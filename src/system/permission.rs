@@ -4,31 +4,52 @@
 
 use crate::errors::AppError;
 use crate::system::command;
-use std::path::Path;
+use std::path::PathBuf;
 
-/// Runs `chmod [--|-R --] <mode> <path>`.
-pub fn chmod(path: &Path, mode: &str, recursive: bool) -> Result<(), AppError> {
-    let path_str = path.to_string_lossy();
-    let args: Vec<&str> = if recursive {
-        vec!["-R", "--", mode, &path_str]
-    } else {
-        vec!["--", mode, &path_str]
-    };
-    run_checked("chmod", &args)
+/// Runs `chmod [--|-R --] <mode> <paths...>`.
+pub fn chmod(paths: &[PathBuf], mode: &str, recursive: bool) -> Result<(), AppError> {
+    for chunk in paths.chunks(200) {
+        let mut args: Vec<&str> = Vec::with_capacity(3 + chunk.len());
+        if recursive {
+            args.push("-R");
+        }
+        args.push("--");
+        args.push(mode);
+        let strs: Vec<String> = chunk
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        for s in &strs {
+            args.push(s.as_str());
+        }
+        run_checked("chmod", &args)?;
+    }
+    Ok(())
 }
 
-/// Runs `chown [-h|-R -h] -- <owner> <path>`.
+/// Runs `chown [-h|-R -h] -- <owner> <paths...>`.
 ///
 /// Always passes `-h` so symlinks themselves are targeted rather than
 /// unexpectedly dereferencing into external paths.
-pub fn chown(path: &Path, owner: &str, recursive: bool) -> Result<(), AppError> {
-    let path_str = path.to_string_lossy();
-    let args: Vec<&str> = if recursive {
-        vec!["-R", "-h", "--", owner, &path_str]
-    } else {
-        vec!["-h", "--", owner, &path_str]
-    };
-    run_checked("chown", &args)
+pub fn chown(paths: &[PathBuf], owner: &str, recursive: bool) -> Result<(), AppError> {
+    for chunk in paths.chunks(200) {
+        let mut args: Vec<&str> = Vec::with_capacity(4 + chunk.len());
+        if recursive {
+            args.push("-R");
+        }
+        args.push("-h");
+        args.push("--");
+        args.push(owner);
+        let strs: Vec<String> = chunk
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        for s in &strs {
+            args.push(s.as_str());
+        }
+        run_checked("chown", &args)?;
+    }
+    Ok(())
 }
 
 fn run_checked(program: &str, args: &[&str]) -> Result<(), AppError> {
@@ -55,7 +76,7 @@ mod tests {
     fn chmod_updates_user_owned_temp_file() {
         let path = std::env::temp_dir().join(format!("usera_chmod_test_{}", std::process::id()));
         fs::write(&path, b"test").unwrap();
-        chmod(&path, "0640", false).expect("chmod succeeds on owned temp file");
+        chmod(&[path.clone()], "0640", false).expect("chmod succeeds on owned temp file");
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o640);
         let _ = fs::remove_file(&path);

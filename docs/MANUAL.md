@@ -69,13 +69,15 @@ Users/Groups Hybrid panel (`F` toggles; auto-active when terminal >= 105x24) & `
 | Key | Action |
 | --- | --- |
 | `F` | toggle contextual Resources split on Users/Groups |
+| `Space` | mark/unmark multiple files or folders for batch operations |
 | `Enter` / `⌫` | open directory / go to parent directory |
 | `G` / `H` / `.` | jump to path / jump to user home (Hybrid) / toggle dotfiles |
 | `M` | change mode (`chmod` checkboxes incl. SUID/SGID/Sticky + recursive YES) |
 | `O` | change owner/group (`chown`, optional recursive preview + YES) |
-| `A` | set POSIX ACL (`setfacl -m` Scope selector, 1+ char autocomplete, `r/w/x` + Default `d:` + recursive YES) |
+| `A` | set/edit POSIX ACL (`setfacl -m` Scope, `Enter`/`Tab` autocomplete + auto-load existing ACL, `r/w/x/X`, `Access` & `Default d:`) |
 | `X` | remove POSIX ACLs (`setfacl -x`/`-k` checklist from active entries) |
 | `B` | clear all extended ACLs (`setfacl -b`, type YES) |
+| `C` / `V` | copy ACL rules / paste ACL onto single or multi-selected items (`YES` confirm) |
 
 Inside a form: `Tab`/`Shift+Tab` or `↓`/`↑` move between fields,
 `←`/`→` move the text caret, `Backspace`/`Delete` edit, `Enter` submits,

@@ -152,6 +152,10 @@ fn push_resource_hints(hints: &mut Vec<Hint>, is_root: bool, show_home_jump: boo
         label: "Nav",
     });
     hints.push(Hint {
+        key: "Space",
+        label: "Mark",
+    });
+    hints.push(Hint {
         key: "G",
         label: "Path",
     });
@@ -177,6 +181,15 @@ fn push_resource_hints(hints: &mut Vec<Hint>, is_root: bool, show_home_jump: boo
         hints.push(Hint {
             key: "A/X/B",
             label: "ACL",
+        });
+        hints.push(Hint {
+            key: "C/V",
+            label: "Copy/Paste",
+        });
+    } else {
+        hints.push(Hint {
+            key: "C",
+            label: "CopyACL",
         });
     }
 }

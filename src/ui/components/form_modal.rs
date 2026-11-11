@@ -3,6 +3,16 @@
 
 use ratatui::layout::Rect;
 use ratatui::Frame;
+use std::path::PathBuf;
+
+/// Formats single path or multi-select count for modal titles.
+pub fn format_paths_title(paths: &[PathBuf]) -> String {
+    if paths.len() == 1 {
+        paths[0].display().to_string()
+    } else {
+        format!("{} selected items", paths.len())
+    }
+}
 
 /// What the modal is currently asking the user for.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,7 +26,10 @@ pub enum ModalKind {
     /// Unlock confirmation.
     ConfirmUnlock(String),
     /// Delete confirmation; bool = remove home as well.
-    ConfirmDelete { user: String, remove_home: bool },
+    ConfirmDelete {
+        user: String,
+        remove_home: bool,
+    },
     /// Add-user-to-groups form.
     AddGroups(String),
     /// Set expiry form.
@@ -38,14 +51,19 @@ pub enum ModalKind {
     /// Change mode (`chmod`) checkbox grid modal.
     Chmod(ChmodState),
     /// Change owner/group (`chown`) modal.
-    Chown { path: String, is_dir: bool },
+    Chown {
+        paths: Vec<PathBuf>,
+        is_dir: bool,
+    },
     /// Set POSIX ACL (`setfacl -m`) interactive scope/autocomplete/checkbox modal.
     SetAcl(SetAclState),
     /// Remove POSIX ACL (`setfacl -x` / `-k`) checklist modal from active entries.
     RemoveAcl(RemoveAclState),
     /// Clear all extended ACLs (`setfacl -b`) confirmation.
-    ConfirmClearAcl(String),
+    ConfirmClearAcl(Vec<PathBuf>),
     /// Explicit preview + YES confirmation for recursive (`-R`) resource mutations.
+    /// Paste/clone copied ACL (`setfacl --set-file=-`) confirmation modal.
+    PasteAcl(PasteAclState),
     ConfirmRecursive(RecursiveOp),
 }
 
@@ -53,19 +71,19 @@ pub enum ModalKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecursiveOp {
     Chmod {
-        path: String,
+        paths: Vec<PathBuf>,
         mode: String,
     },
     Chown {
-        path: String,
+        paths: Vec<PathBuf>,
         owner: String,
     },
     SetAcl {
-        path: String,
-        spec: String,
+        paths: Vec<PathBuf>,
+        specs: Vec<String>,
     },
     RemoveAcl {
-        path: String,
+        paths: Vec<PathBuf>,
         specs: Vec<String>,
         clear_default: bool,
     },
@@ -74,11 +92,11 @@ pub enum RecursiveOp {
 /// Interactive `r/w/x` permission checkbox state for `Owner / Group / Other`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChmodState {
-    pub path: String,
+    pub paths: Vec<PathBuf>,
     pub is_dir: bool,
     /// Full 12-bit POSIX mode (`0o7777`); lower 9 bits toggled via checkboxes.
     pub mode: u32,
-    /// Focused row: `0` = Owner, `1` = Group, `2` = Other, `3` = Recursive (when `is_dir`).
+    /// Focused row: `0` = Owner, `1` = Group, `2` = Other, `3` = Special, `4` = Recursive (when `is_dir`).
     pub row: usize,
     /// Focused permission column: `0` = Read, `1` = Write, `2` = Execute.
     pub col: usize,
@@ -87,9 +105,9 @@ pub struct ChmodState {
 }
 
 impl ChmodState {
-    pub fn new(path: String, mode: u32, is_dir: bool) -> Self {
+    pub fn new(paths: Vec<PathBuf>, mode: u32, is_dir: bool) -> Self {
         Self {
-            path,
+            paths,
             is_dir,
             mode: mode & 0o7777,
             row: 0,
@@ -225,38 +243,75 @@ pub struct CandidateItem {
     pub is_regular: bool,
 }
 
-/// Interactive `Scope + Autocomplete Name + r/w/x + Default (d:) + Recursive (-R)` modal for `setfacl -m`.
+/// Execute permission state for POSIX ACLs (`-` / `x` / `X`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecPerm {
+    /// No execute permission (`-`).
+    None,
+    /// Unconditional execute (`x`).
+    Always,
+    /// Conditional execute (`X`: directories and already-executable files).
+    Conditional,
+}
+
+impl ExecPerm {
+    pub fn cycle(self) -> Self {
+        match self {
+            ExecPerm::None => ExecPerm::Always,
+            ExecPerm::Always => ExecPerm::Conditional,
+            ExecPerm::Conditional => ExecPerm::None,
+        }
+    }
+
+    pub const fn ch(self) -> char {
+        match self {
+            ExecPerm::None => '-',
+            ExecPerm::Always => 'x',
+            ExecPerm::Conditional => 'X',
+        }
+    }
+}
+
+/// Interactive `Scope + Autocomplete Name + r/w/x/X + Access/Default + Recursive (-R)` modal for `setfacl -m`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetAclState {
-    pub path: String,
+    pub paths: Vec<PathBuf>,
     pub is_dir: bool,
     pub scope: AclTargetScope,
     pub name: String,
     pub cursor_col: usize,
     pub users: Vec<CandidateItem>,
     pub groups: Vec<CandidateItem>,
+    pub existing_acl: crate::models::AclInfo,
+    /// True when permissions were auto-populated from an existing ACL entry.
+    pub loaded_existing: bool,
     /// Highlighted index inside `filtered_suggestions()`.
     pub sug_idx: usize,
-    /// `[read, write, exec]` checkboxes.
-    pub perms: [bool; 3],
-    /// Whether to apply as `default:` ACL (directories only).
-    pub default_acl: bool,
+    pub read: bool,
+    pub write: bool,
+    pub exec: ExecPerm,
+    /// Apply non-default access ACL (`u:name:perms`).
+    pub apply_access: bool,
+    /// Apply default ACL (`d:u:name:perms`, directories only).
+    pub apply_default: bool,
     /// Whether to apply recursively `-R` (directories only).
     pub recursive: bool,
-    /// Focused row: `0` = Scope, `1` = Name, `2` = Perms, `3` = Default (`d:`), `4` = Recursive (`-R`).
+    /// Focused row:
+    /// `0` = Scope, `1` = Name, `2` = Perms, `3` = Access ACL, `4` = Default (`d:`), `5` = Recursive (`-R`).
     pub row: usize,
-    /// Focused permission column (`0=r, 1=w, 2=x`) when `row == 2`.
+    /// Focused permission column (`0=r, 1=w, 2=x/X`) when `row == 2`.
     pub col: usize,
 }
 
 impl SetAclState {
     pub fn new(
-        path: String,
+        paths: Vec<PathBuf>,
         scope: AclTargetScope,
         prefill_name: &str,
         is_dir: bool,
         users: Vec<CandidateItem>,
         groups: Vec<CandidateItem>,
+        existing_acl: crate::models::AclInfo,
     ) -> Self {
         let name = prefill_name.to_string();
         let cursor_col = name.len();
@@ -265,28 +320,114 @@ impl SetAclState {
         } else {
             1
         };
-        Self {
-            path,
+        let mut st = Self {
+            paths,
             is_dir,
             scope,
             name,
             cursor_col,
             users,
             groups,
+            existing_acl,
+            loaded_existing: false,
             sug_idx: 0,
-            perms: [true, true, is_dir],
-            default_acl: false,
+            read: true,
+            write: true,
+            exec: if is_dir {
+                ExecPerm::Conditional
+            } else {
+                ExecPerm::None
+            },
+            apply_access: true,
+            apply_default: false,
             recursive: false,
             row: start_row,
             col: 0,
-        }
+        };
+        st.sync_existing_acl(false);
+        st
     }
 
     fn row_count(&self) -> usize {
         if self.is_dir {
-            5
+            6
         } else {
             3
+        }
+    }
+
+    fn reset_default_perms(&mut self) {
+        self.read = true;
+        self.write = true;
+        self.exec = if self.is_dir {
+            ExecPerm::Conditional
+        } else {
+            ExecPerm::None
+        };
+        self.apply_access = true;
+        self.apply_default = false;
+        self.loaded_existing = false;
+    }
+
+    /// Populates `r/w/x` and `Access`/`Default` flags if the selected target already has an ACL.
+    fn sync_existing_acl(&mut self, reset_when_missing: bool) {
+        use crate::models::AclScope;
+        let trimmed = self.name.trim();
+        if self.scope.needs_name() && trimmed.is_empty() {
+            if reset_when_missing {
+                self.reset_default_perms();
+            }
+            return;
+        }
+        let target_scope = match self.scope {
+            AclTargetScope::User => AclScope::User,
+            AclTargetScope::Group => AclScope::Group,
+            AclTargetScope::Mask => AclScope::Mask,
+            AclTargetScope::Other => AclScope::Other,
+        };
+        let matches_entry = |e: &&crate::models::AclEntry| -> bool {
+            if e.scope != target_scope {
+                return false;
+            }
+            if self.scope.needs_name() {
+                e.qualifier == trimmed
+            } else {
+                e.qualifier.is_empty()
+            }
+        };
+        let access = self
+            .existing_acl
+            .entries
+            .iter()
+            .find(|e| !e.is_default && matches_entry(e));
+        let default_e = self
+            .existing_acl
+            .entries
+            .iter()
+            .find(|e| e.is_default && matches_entry(e));
+
+        if let Some(primary) = access.or(default_e) {
+            self.read = primary.perms.contains('r');
+            self.write = primary.perms.contains('w');
+            self.exec = if primary.perms.contains('X') {
+                ExecPerm::Conditional
+            } else if primary.perms.contains('x') {
+                ExecPerm::Always
+            } else {
+                ExecPerm::None
+            };
+            if self.is_dir {
+                self.apply_access = access.is_some();
+                self.apply_default = default_e.is_some();
+            } else {
+                self.apply_access = true;
+                self.apply_default = false;
+            }
+            self.loaded_existing = true;
+        } else if reset_when_missing {
+            self.reset_default_perms();
+        } else {
+            self.loaded_existing = false;
         }
     }
 
@@ -297,6 +438,7 @@ impl SetAclState {
             self.name.clear();
             self.cursor_col = 0;
         }
+        self.sync_existing_acl(true);
     }
 
     pub fn move_row(&mut self, delta: isize) {
@@ -329,6 +471,7 @@ impl SetAclState {
             self.name.insert(col, c);
             self.cursor_col = col + c.len_utf8();
             self.sug_idx = 0;
+            self.sync_existing_acl(false);
         }
     }
 
@@ -344,6 +487,7 @@ impl SetAclState {
                 self.name.remove(col - prev);
                 self.cursor_col = col - prev;
                 self.sug_idx = 0;
+                self.sync_existing_acl(false);
             }
         }
     }
@@ -354,6 +498,7 @@ impl SetAclState {
             if col < self.name.len() {
                 self.name.remove(col);
                 self.sug_idx = 0;
+                self.sync_existing_acl(false);
             }
             self.cursor_col = col;
         }
@@ -408,40 +553,65 @@ impl SetAclState {
         self.name = list[idx].name.clone();
         self.cursor_col = self.name.len();
         self.sug_idx = 0;
+        self.sync_existing_acl(true);
         true
     }
 
     pub fn toggle(&mut self) {
         match self.row {
             0 => self.cycle_scope(1),
-            2 => self.perms[self.col] = !self.perms[self.col],
-            3 if self.is_dir => self.default_acl = !self.default_acl,
-            4 if self.is_dir => self.recursive = !self.recursive,
+            2 => match self.col {
+                0 => self.read = !self.read,
+                1 => self.write = !self.write,
+                2 => self.exec = self.exec.cycle(),
+                _ => {}
+            },
+            3 if self.is_dir => self.apply_access = !self.apply_access,
+            4 if self.is_dir => self.apply_default = !self.apply_default,
+            5 if self.is_dir => self.recursive = !self.recursive,
             _ => {}
         }
     }
 
-    pub fn toggle_perm(&mut self, col: usize) {
-        if self.row == 2 && col < 3 {
-            self.col = col;
-            self.perms[col] = !self.perms[col];
+    pub fn toggle_read(&mut self) {
+        if self.row == 2 {
+            self.col = 0;
+            self.read = !self.read;
         }
     }
 
-    /// Builds the `setfacl -m` spec string, e.g. `u:deploy:rwx`, `m::r-x`, or `d:g:devs:rx`.
-    pub fn build_spec(&self) -> String {
+    pub fn toggle_write(&mut self) {
+        if self.row == 2 {
+            self.col = 1;
+            self.write = !self.write;
+        }
+    }
+
+    pub fn set_exec(&mut self, kind: ExecPerm) {
+        if self.row == 2 {
+            self.col = 2;
+            self.exec = if self.exec == kind {
+                ExecPerm::None
+            } else {
+                kind
+            };
+        }
+    }
+
+    /// Builds the `setfacl -m` spec list (access and/or default).
+    pub fn build_specs(&self) -> Vec<String> {
         let target = match self.scope {
             AclTargetScope::User => {
                 let n = self.name.trim();
                 if n.is_empty() {
-                    return String::new();
+                    return Vec::new();
                 }
                 format!("u:{n}")
             }
             AclTargetScope::Group => {
                 let n = self.name.trim();
                 if n.is_empty() {
-                    return String::new();
+                    return Vec::new();
                 }
                 format!("g:{n}")
             }
@@ -450,16 +620,21 @@ impl SetAclState {
         };
         let perms = format!(
             "{}{}{}",
-            if self.perms[0] { 'r' } else { '-' },
-            if self.perms[1] { 'w' } else { '-' },
-            if self.perms[2] { 'x' } else { '-' }
+            if self.read { 'r' } else { '-' },
+            if self.write { 'w' } else { '-' },
+            self.exec.ch()
         );
-        let prefix = if self.default_acl && self.is_dir {
-            "d:"
-        } else {
-            ""
-        };
-        format!("{prefix}{target}:{perms}")
+        if !self.is_dir {
+            return vec![format!("{target}:{perms}")];
+        }
+        let mut specs = Vec::new();
+        if self.apply_access {
+            specs.push(format!("{target}:{perms}"));
+        }
+        if self.apply_default {
+            specs.push(format!("d:{target}:{perms}"));
+        }
+        specs
     }
 }
 
@@ -481,7 +656,7 @@ pub struct RemoveAclItem {
 /// Interactive checklist populated from active `AclInfo` entries on the selected path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoveAclState {
-    pub path: String,
+    pub paths: Vec<PathBuf>,
     pub is_dir: bool,
     pub items: Vec<RemoveAclItem>,
     pub cursor: usize,
@@ -489,37 +664,57 @@ pub struct RemoveAclState {
 }
 
 impl RemoveAclState {
-    pub fn from_acl(
-        path: String,
+    pub fn from_acls(
+        paths: Vec<PathBuf>,
         is_dir: bool,
-        acl: &crate::models::AclInfo,
+        acls: &[crate::models::AclInfo],
         preselect_user: Option<&str>,
         preselect_group: Option<&str>,
     ) -> Self {
-        let mut items = Vec::new();
-        for entry in &acl.entries {
-            if entry.qualifier.is_empty() {
-                continue;
+        let mut items: Vec<RemoveAclItem> = Vec::new();
+        let mut seen_specs = std::collections::HashSet::new();
+        let mut any_default = false;
+        for acl in acls {
+            for entry in &acl.entries {
+                if entry.is_default {
+                    any_default = true;
+                }
+                if entry.qualifier.is_empty() {
+                    continue;
+                }
+                let scope_ch = match entry.scope {
+                    crate::models::AclScope::User => "u",
+                    crate::models::AclScope::Group => "g",
+                    _ => continue,
+                };
+                let def_prefix = if entry.is_default { "d:" } else { "" };
+                let spec = format!("{def_prefix}{scope_ch}:{}", entry.qualifier);
+                if !seen_specs.insert(spec.clone()) {
+                    continue;
+                }
+                let preselected = match entry.scope {
+                    crate::models::AclScope::User => {
+                        preselect_user == Some(entry.qualifier.as_str())
+                    }
+                    crate::models::AclScope::Group => {
+                        preselect_group == Some(entry.qualifier.as_str())
+                    }
+                    _ => false,
+                };
+                let label = if acls.len() == 1 {
+                    entry.display_line()
+                } else {
+                    let d = if entry.is_default { "default:" } else { "" };
+                    format!("{d}{}:{}", entry.scope.short(), entry.qualifier)
+                };
+                items.push(RemoveAclItem {
+                    label,
+                    target: RemoveAclTarget::Spec(spec),
+                    selected: preselected,
+                });
             }
-            let scope_ch = match entry.scope {
-                crate::models::AclScope::User => "u",
-                crate::models::AclScope::Group => "g",
-                _ => continue,
-            };
-            let def_prefix = if entry.is_default { "d:" } else { "" };
-            let spec = format!("{def_prefix}{scope_ch}:{}", entry.qualifier);
-            let preselected = match entry.scope {
-                crate::models::AclScope::User => preselect_user == Some(entry.qualifier.as_str()),
-                crate::models::AclScope::Group => preselect_group == Some(entry.qualifier.as_str()),
-                _ => false,
-            };
-            items.push(RemoveAclItem {
-                label: entry.display_line(),
-                target: RemoveAclTarget::Spec(spec),
-                selected: preselected,
-            });
         }
-        if acl.entries.iter().any(|e| e.is_default) {
+        if any_default {
             items.push(RemoveAclItem {
                 label: "All default ACLs (setfacl -k)".to_string(),
                 target: RemoveAclTarget::ClearDefault,
@@ -527,7 +722,7 @@ impl RemoveAclState {
             });
         }
         Self {
-            path,
+            paths,
             is_dir,
             items,
             cursor: 0,
@@ -569,6 +764,111 @@ impl RemoveAclState {
         self.items
             .iter()
             .any(|i| i.selected && i.target == RemoveAclTarget::ClearDefault)
+    }
+}
+
+/// Confirmation modal state for cloning a copied ACL onto target path(s).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PasteAclState {
+    pub paths: Vec<PathBuf>,
+    pub is_dir: bool,
+    pub source_label: String,
+    pub acl_text: String,
+    pub rule_count: usize,
+    pub recursive: bool,
+    pub confirm: String,
+    pub cursor_col: usize,
+    /// Row `0` = Recursive (`-R`) when `is_dir`; confirm input is `1` (or `0` when file).
+    pub row: usize,
+}
+
+impl PasteAclState {
+    pub fn new(
+        paths: Vec<PathBuf>,
+        is_dir: bool,
+        source_label: String,
+        acl_text: String,
+        rule_count: usize,
+    ) -> Self {
+        Self {
+            paths,
+            is_dir,
+            source_label,
+            acl_text,
+            rule_count,
+            recursive: false,
+            confirm: String::new(),
+            cursor_col: 0,
+            row: if is_dir { 1 } else { 0 },
+        }
+    }
+
+    fn confirm_row(&self) -> usize {
+        if self.is_dir {
+            1
+        } else {
+            0
+        }
+    }
+
+    pub fn move_row(&mut self, delta: isize) {
+        if self.is_dir {
+            self.row = (self.row as isize + delta).rem_euclid(2) as usize;
+        }
+    }
+
+    pub fn toggle_recursive(&mut self) {
+        if self.is_dir && self.row == 0 {
+            self.recursive = !self.recursive;
+        }
+    }
+
+    pub fn move_col(&mut self, delta: isize) {
+        if self.row == self.confirm_row() {
+            let cols: Vec<usize> = (0..=self.confirm.len())
+                .filter(|i| self.confirm.is_char_boundary(*i))
+                .collect();
+            let pos = cols.iter().position(|&c| c == self.cursor_col).unwrap_or(0);
+            let next = (pos as isize + delta).clamp(0, cols.len() as isize - 1) as usize;
+            self.cursor_col = cols[next];
+        }
+    }
+
+    pub fn push_char(&mut self, c: char) {
+        if self.row == self.confirm_row() {
+            let col = self.cursor_col.min(self.confirm.len());
+            self.confirm.insert(col, c);
+            self.cursor_col = col + c.len_utf8();
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        if self.row == self.confirm_row() {
+            let col = self.cursor_col.min(self.confirm.len());
+            if col > 0 {
+                let prev = self.confirm[..col]
+                    .chars()
+                    .last()
+                    .map(|c| c.len_utf8())
+                    .unwrap_or(1);
+                self.confirm.remove(col - prev);
+                self.cursor_col = col - prev;
+            }
+        }
+    }
+
+    pub fn delete(&mut self) {
+        if self.row == self.confirm_row() {
+            let col = self.cursor_col.min(self.confirm.len());
+            if col < self.confirm.len() {
+                self.confirm.remove(col);
+            }
+            self.cursor_col = col;
+        }
+    }
+
+    pub fn is_confirmed(&self) -> bool {
+        self.confirm.trim() == "YES"
     }
 }
 
@@ -742,10 +1042,10 @@ impl Modal {
     }
 
     /// Opens the interactive `chmod` checkbox modal initialized from `current_mode`.
-    pub fn chmod(path: String, current_mode: u32, is_dir: bool) -> Self {
+    pub fn chmod(paths: Vec<PathBuf>, current_mode: u32, is_dir: bool) -> Self {
         Modal {
             kind: Some(ModalKind::Chmod(ChmodState::new(
-                path,
+                paths,
                 current_mode,
                 is_dir,
             ))),
@@ -754,13 +1054,13 @@ impl Modal {
     }
 
     /// Opens the `chown` modal; directories include an optional recursive toggle.
-    pub fn chown(path: String, current_owner: &str, is_dir: bool) -> Self {
+    pub fn chown(paths: Vec<PathBuf>, current_owner: &str, is_dir: bool) -> Self {
         let mut fields = vec![Field::with_value("Owner[:Group]", current_owner)];
         if is_dir {
             fields.push(Field::new("Recursive? (yes/no)"));
         }
         Modal {
-            kind: Some(ModalKind::Chown { path, is_dir }),
+            kind: Some(ModalKind::Chown { paths, is_dir }),
             cursor_col: current_owner.len(),
             fields,
             ..Modal::default()
@@ -769,21 +1069,23 @@ impl Modal {
 
     /// Opens the interactive `setfacl -m` modal with Scope selector + 1+ char autocomplete.
     pub fn set_acl(
-        path: String,
+        paths: Vec<PathBuf>,
         scope: AclTargetScope,
         prefill_name: &str,
         is_dir: bool,
         users: Vec<CandidateItem>,
         groups: Vec<CandidateItem>,
+        existing_acl: crate::models::AclInfo,
     ) -> Self {
         Modal {
             kind: Some(ModalKind::SetAcl(SetAclState::new(
-                path,
+                paths,
                 scope,
                 prefill_name,
                 is_dir,
                 users,
                 groups,
+                existing_acl,
             ))),
             ..Modal::default()
         }
@@ -793,6 +1095,14 @@ impl Modal {
     pub fn remove_acl(state: RemoveAclState) -> Self {
         Modal {
             kind: Some(ModalKind::RemoveAcl(state)),
+            ..Modal::default()
+        }
+    }
+
+    /// Opens the `Paste ACL` confirmation dialog.
+    pub fn paste_acl(state: PasteAclState) -> Self {
+        Modal {
+            kind: Some(ModalKind::PasteAcl(state)),
             ..Modal::default()
         }
     }
@@ -945,7 +1255,10 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
             render_chmod(frame, modal, state, area);
             return;
         }
-        Some(ModalKind::Chown { path, .. }) => (&format!("Owner (chown) — {path}")[..], false),
+        Some(ModalKind::Chown { paths, .. }) => (
+            &format!("Owner (chown) — {}", format_paths_title(paths))[..],
+            false,
+        ),
         Some(ModalKind::SetAcl(state)) => {
             render_set_acl(frame, modal, state, area);
             return;
@@ -954,7 +1267,14 @@ pub fn render(frame: &mut Frame, modal: &Modal, area: Rect) {
             render_remove_acl(frame, modal, state, area);
             return;
         }
-        Some(ModalKind::ConfirmClearAcl(path)) => (&format!("Clear ACLs — {path}")[..], true),
+        Some(ModalKind::PasteAcl(state)) => {
+            render_paste_acl(frame, modal, state, area);
+            return;
+        }
+        Some(ModalKind::ConfirmClearAcl(paths)) => (
+            &format!("Clear ACLs — {}", format_paths_title(paths))[..],
+            true,
+        ),
         Some(ModalKind::ConfirmRecursive(_)) => ("Confirm Recursive Operation", true),
         None => return,
     };
@@ -1055,7 +1375,7 @@ fn render_chmod(frame: &mut Frame, modal: &Modal, state: &ChmodState, area: Rect
     use ratatui::text::{Line, Span};
     use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-    let title = format!("Mode (chmod) — {}", state.path);
+    let title = format!("Mode (chmod) — {}", format_paths_title(&state.paths));
     let mut lines: Vec<Line> = Vec::new();
 
     if let Some(err) = &modal.error {
@@ -1191,7 +1511,7 @@ fn render_set_acl(frame: &mut Frame, modal: &Modal, state: &SetAclState, area: R
     use ratatui::text::{Line, Span};
     use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-    let title = format!("Set ACL — {}", state.path);
+    let title = format!("Set ACL — {}", format_paths_title(&state.paths));
     let mut lines: Vec<Line> = Vec::new();
 
     if let Some(err) = &modal.error {
@@ -1285,7 +1605,7 @@ fn render_set_acl(frame: &mut Frame, modal: &Modal, state: &SetAclState, area: R
         )));
     }
 
-    // Row 2: r/w/x checkboxes
+    // Row 2: r/w/x/X checkboxes
     let perm_focused = state.row == 2;
     let p_prefix = if perm_focused { "▸ " } else { "  " };
     let mut perm_spans = vec![Span::styled(
@@ -1296,45 +1616,77 @@ fn render_set_acl(frame: &mut Frame, modal: &Modal, state: &SetAclState, area: R
             crate::ui::theme::dim()
         },
     )];
-    for (col_idx, ch) in ['r', 'w', 'x'].iter().enumerate() {
-        let checked = state.perms[col_idx];
+    let cells = [
+        (
+            if state.read { "[x] r" } else { "[ ] r" },
+            state.read,
+            false,
+        ),
+        (
+            if state.write { "[x] w" } else { "[ ] w" },
+            state.write,
+            false,
+        ),
+        (
+            match state.exec {
+                ExecPerm::None => "[ ] x",
+                ExecPerm::Always => "[x] x",
+                ExecPerm::Conditional => "[X] X (dir/+x)",
+            },
+            state.exec != ExecPerm::None,
+            state.exec == ExecPerm::Conditional,
+        ),
+    ];
+    for (col_idx, (label, is_on, is_cond)) in cells.iter().enumerate() {
         let cell_focused = perm_focused && state.col == col_idx;
-        let box_str = if checked {
-            format!("[x] {ch}")
-        } else {
-            format!("[ ] {ch}")
-        };
         let style = if cell_focused {
             crate::ui::theme::accent()
-        } else if checked {
+        } else if *is_cond {
+            crate::ui::theme::warning()
+        } else if *is_on {
             crate::ui::theme::success()
         } else {
             crate::ui::theme::dim()
         };
-        perm_spans.push(Span::styled(box_str, style));
+        perm_spans.push(Span::styled(*label, style));
         if col_idx < 2 {
-            perm_spans.push(Span::raw("     "));
+            perm_spans.push(Span::raw("    "));
         }
     }
     lines.push(Line::from(perm_spans));
 
     if state.is_dir {
-        let def_focused = state.row == 3;
+        let acc_focused = state.row == 3;
+        let a_prefix = if acc_focused { "▸ " } else { "  " };
+        let a_mark = if state.apply_access { "[x]" } else { "[ ]" };
+        let a_style = if acc_focused {
+            crate::ui::theme::accent()
+        } else if state.apply_access {
+            crate::ui::theme::success()
+        } else {
+            crate::ui::theme::dim()
+        };
+        lines.push(Line::from(Span::styled(
+            format!("{a_prefix}{a_mark} Apply Access ACL (this path)"),
+            a_style,
+        )));
+
+        let def_focused = state.row == 4;
         let prefix = if def_focused { "▸ " } else { "  " };
-        let mark = if state.default_acl { "[x]" } else { "[ ]" };
+        let mark = if state.apply_default { "[x]" } else { "[ ]" };
         let style = if def_focused {
             crate::ui::theme::accent()
-        } else if state.default_acl {
+        } else if state.apply_default {
             crate::ui::theme::warning()
         } else {
             crate::ui::theme::dim()
         };
         lines.push(Line::from(Span::styled(
-            format!("{prefix}{mark} Default ACL (d:) — new files inherit"),
+            format!("{prefix}{mark} Apply Default ACL (d:) — new files inherit"),
             style,
         )));
 
-        let rec_focused = state.row == 4;
+        let rec_focused = state.row == 5;
         let r_prefix = if rec_focused { "▸ " } else { "  " };
         let r_mark = if state.recursive { "[x]" } else { "[ ]" };
         let r_style = if rec_focused {
@@ -1351,29 +1703,39 @@ fn render_set_acl(frame: &mut Frame, modal: &Modal, state: &SetAclState, area: R
     }
 
     lines.push(Line::from(""));
-    let spec = state.build_spec();
+    let specs = state.build_specs();
+    let spec_text = if specs.is_empty() {
+        if state.scope.needs_name() && state.name.trim().is_empty() {
+            "(select or type name)".to_string()
+        } else {
+            "(enable Access and/or Default ACL)".to_string()
+        }
+    } else {
+        specs.join(",")
+    };
+    let loaded_note = if state.loaded_existing {
+        "  (loaded existing ACL)"
+    } else {
+        ""
+    };
     lines.push(Line::from(vec![
         Span::styled("  Spec: ", crate::ui::theme::dim()),
         Span::styled(
-            if spec.is_empty() {
-                "(select or type name)"
-            } else {
-                &spec
-            }
-            .to_string(),
-            if spec.is_empty() {
+            spec_text,
+            if specs.is_empty() {
                 crate::ui::theme::dim()
             } else {
                 crate::ui::theme::title()
             },
         ),
+        Span::styled(loaded_note, crate::ui::theme::success()),
     ]));
     lines.push(
-        Line::from("  ↑↓/Tab move or pick · ←→ scope/perms · Space toggle · Enter apply")
+        Line::from("  ↑↓/Tab move · Enter pick/apply · Space/r/w/x/X toggle · Esc cancel")
             .set_style(crate::ui::theme::dim()),
     );
 
-    let width = 70_u16.min(area.width.saturating_sub(2));
+    let width = 74_u16.min(area.width.saturating_sub(2));
     let height = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
     let box_area = super::modal::centered(area, width, height);
     let block = Block::new()
@@ -1386,13 +1748,110 @@ fn render_set_acl(frame: &mut Frame, modal: &Modal, state: &SetAclState, area: R
     frame.render_widget(Paragraph::new(lines).block(block), box_area);
 }
 
+/// Renders the Paste/Clone ACL confirmation modal (`setfacl --set-file=-`).
+fn render_paste_acl(frame: &mut Frame, modal: &Modal, state: &PasteAclState, area: Rect) {
+    use ratatui::style::Styled;
+    use ratatui::text::{Line, Span};
+    use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+
+    let title = format!("Paste ACL — {}", format_paths_title(&state.paths));
+    let mut lines: Vec<Line> = Vec::new();
+
+    if let Some(err) = &modal.error {
+        lines.push(Line::from(
+            format!(" {err}").set_style(crate::ui::theme::error()),
+        ));
+        lines.push(Line::from(""));
+    } else {
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::from(vec![
+        Span::styled("  Source : ", crate::ui::theme::dim()),
+        Span::styled(
+            format!("{} ({} rules)", state.source_label, state.rule_count),
+            crate::ui::theme::title(),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  Target : ", crate::ui::theme::dim()),
+        Span::styled(format_paths_title(&state.paths), crate::ui::theme::base()),
+    ]));
+    lines.push(Line::from(
+        "  Replaces all existing extended ACLs on target(s)."
+            .set_style(crate::ui::theme::warning()),
+    ));
+    lines.push(Line::from(""));
+
+    if state.is_dir {
+        let rec_focused = state.row == 0;
+        let prefix = if rec_focused { "▸ " } else { "  " };
+        let mark = if state.recursive { "[x]" } else { "[ ]" };
+        let style = if rec_focused {
+            crate::ui::theme::accent()
+        } else if state.recursive {
+            crate::ui::theme::warning()
+        } else {
+            crate::ui::theme::dim()
+        };
+        lines.push(Line::from(Span::styled(
+            format!("{prefix}{mark} Recursive (-R)"),
+            style,
+        )));
+    }
+
+    let conf_focused = state.row == state.confirm_row();
+    let c_prefix = if conf_focused { "▸ " } else { "  " };
+    let c_label = Span::styled(
+        format!("{c_prefix}Type YES to confirm: "),
+        if conf_focused {
+            crate::ui::theme::title()
+        } else {
+            crate::ui::theme::dim()
+        },
+    );
+    if conf_focused {
+        let col = state.cursor_col.min(state.confirm.len());
+        let (before, after) = state.confirm.split_at(col);
+        lines.push(Line::from(vec![
+            c_label,
+            Span::styled(before.to_string(), crate::ui::theme::base()),
+            Span::styled("▏", crate::ui::theme::accent()),
+            Span::styled(after.to_string(), crate::ui::theme::base()),
+        ]));
+    } else {
+        lines.push(Line::from(vec![
+            c_label,
+            Span::styled(state.confirm.clone(), crate::ui::theme::base()),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(
+        Line::from("  ↑↓/Tab move · Space toggle -R · Enter paste · Esc cancel")
+            .set_style(crate::ui::theme::dim()),
+    );
+
+    let width = 70_u16.min(area.width.saturating_sub(2));
+    let height = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
+    let box_area = super::modal::centered(area, width, height);
+    let block = Block::new()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .borders(Borders::ALL)
+        .title(format!(" {title} ").set_style(crate::ui::theme::title()))
+        .border_style(crate::ui::theme::warning());
+
+    frame.render_widget(Clear, box_area);
+    frame.render_widget(Paragraph::new(lines).block(block), box_area);
+}
+
 /// Renders the Remove ACL checklist modal populated from active entries.
 fn render_remove_acl(frame: &mut Frame, modal: &Modal, state: &RemoveAclState, area: Rect) {
     use ratatui::style::Styled;
     use ratatui::text::{Line, Span};
     use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-    let title = format!("Remove ACL — {}", state.path);
+    let title = format!("Remove ACL — {}", format_paths_title(&state.paths));
     let mut lines: Vec<Line> = Vec::new();
 
     if let Some(err) = &modal.error {
@@ -1562,7 +2021,7 @@ mod tests {
     #[test]
     fn chmod_checkbox_grid_toggles_bits_and_preserves_special_bits() {
         // SGID 0o2750 = drwxr-s---
-        let mut state = ChmodState::new("/srv/app".into(), 0o2750, true);
+        let mut state = ChmodState::new(vec![PathBuf::from("/srv/app")], 0o2750, true);
         assert!(state.has_bit(0, 0)); // Owner r
         assert!(state.has_bit(0, 1)); // Owner w
         assert!(state.has_bit(0, 2)); // Owner x
@@ -1598,13 +2057,14 @@ mod tests {
         assert!(state.recursive);
 
         // Files do not expose Recursive row (4 rows: 0..=3)
-        let mut file_state = ChmodState::new("/srv/app/.env".into(), 0o0600, false);
+        let mut file_state = ChmodState::new(vec![PathBuf::from("/srv/app/.env")], 0o0600, false);
         file_state.move_row(-1);
         assert_eq!(file_state.row, 3);
     }
 
     #[test]
-    fn set_acl_scope_and_one_char_autocomplete_dropdown() {
+    fn set_acl_scope_autocomplete_existing_sync_and_x_modes() {
+        use crate::models::{AclEntry, AclInfo, AclScope};
         use ratatui::backend::TestBackend;
         use ratatui::Terminal;
 
@@ -1625,53 +2085,82 @@ mod tests {
             meta: "GID 1005".into(),
             is_regular: false,
         }];
+        let existing = AclInfo {
+            available: true,
+            entries: vec![
+                AclEntry {
+                    is_default: false,
+                    scope: AclScope::User,
+                    qualifier: "deploy".into(),
+                    perms: "r-x".into(),
+                    effective: None,
+                },
+                AclEntry {
+                    is_default: true,
+                    scope: AclScope::User,
+                    qualifier: "deploy".into(),
+                    perms: "r-x".into(),
+                    effective: None,
+                },
+            ],
+            error: None,
+        };
 
         let mut st = SetAclState::new(
-            "/var/www/app".into(),
+            vec![PathBuf::from("/var/www/app")],
             AclTargetScope::User,
             "",
             true,
             users.clone(),
             groups.clone(),
+            existing.clone(),
         );
         // Empty name -> NO dropdown yet!
         assert_eq!(st.row, 1);
         assert!(st.filtered_suggestions().is_empty());
 
-        // Type 'd' -> dropdown appears, regular user 'deploy' ranked before 'debian-tor'
+        // Type 'd' -> dropdown appears, regular user 'deploy' ranked first
         st.push_char('d');
         let sugs = st.filtered_suggestions();
         assert_eq!(sugs.len(), 2);
         assert_eq!(sugs[0].name, "deploy");
 
-        // Accept suggestion -> fills 'deploy' and hides dropdown
+        // Accept suggestion -> fills 'deploy' AND loads existing r-x + Access & Default flags!
         assert!(st.accept_suggestion());
         assert_eq!(st.name, "deploy");
-        assert!(st.filtered_suggestions().is_empty());
-        assert_eq!(st.build_spec(), "u:deploy:rwx");
+        assert!(st.loaded_existing);
+        assert!(st.read);
+        assert!(!st.write);
+        assert_eq!(st.exec, ExecPerm::Always);
+        assert!(st.apply_access);
+        assert!(st.apply_default);
+        assert_eq!(st.build_specs(), vec!["u:deploy:r-x", "d:u:deploy:r-x"]);
 
-        // Move to Perms (row 2), remove Write, move to Default (row 3) and toggle
+        // Move to Perms (row 2), turn Write on and Exec to Conditional 'X' -> rwX on both Access & Default!
         st.move_row(1);
-        st.toggle_perm(1);
-        st.move_row(1);
-        st.toggle();
-        assert_eq!(st.build_spec(), "d:u:deploy:r-x");
+        st.toggle_write();
+        st.set_exec(ExecPerm::Conditional);
+        assert_eq!(st.build_specs(), vec!["u:deploy:rwX", "d:u:deploy:rwX"]);
 
         // Switch to Mask scope -> Name row skipped, Mask spec built cleanly
         st.row = 0;
         st.cycle_scope(2);
         assert_eq!(st.scope, AclTargetScope::Mask);
-        assert_eq!(st.build_spec(), "d:m::r-x");
+        assert_eq!(st.build_specs(), vec!["m::rwX"]);
         st.move_row(1);
         assert_eq!(st.row, 2); // skipped row 1 (Name)
 
         let modal = Modal::set_acl(
-            "/var/www/app".into(),
+            vec![
+                PathBuf::from("/var/www/app"),
+                PathBuf::from("/var/www/uploads"),
+            ],
             AclTargetScope::User,
             "de",
             true,
             users,
             groups,
+            existing,
         );
         let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();
         term.draw(|frame| render(frame, &modal, frame.area()))
@@ -1704,7 +2193,13 @@ mod tests {
             ],
             error: None,
         };
-        let mut st = RemoveAclState::from_acl("/var/www".into(), true, &acl, Some("deploy"), None);
+        let mut st = RemoveAclState::from_acls(
+            vec![PathBuf::from("/var/www")],
+            true,
+            &[acl],
+            Some("deploy"),
+            None,
+        );
         // Preselected 'deploy', plus 'd:g:devs' and 'All default ACLs'
         assert_eq!(st.items.len(), 3);
         assert!(st.items[0].selected);
@@ -1723,10 +2218,39 @@ mod tests {
     }
 
     #[test]
+    fn paste_acl_modal_requires_yes_and_renders() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut st = PasteAclState::new(
+            vec![PathBuf::from("/var/www/dst")],
+            true,
+            "src".into(),
+            "user::rwx\ngroup::r-x\nother::---\n".into(),
+            3,
+        );
+        assert!(!st.is_confirmed());
+        assert_eq!(st.row, 1);
+        for c in "YES".chars() {
+            st.push_char(c);
+        }
+        assert!(st.is_confirmed());
+        st.move_row(-1);
+        assert_eq!(st.row, 0);
+        st.toggle_recursive();
+        assert!(st.recursive);
+
+        let modal = Modal::paste_acl(st);
+        let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        term.draw(|frame| render(frame, &modal, frame.area()))
+            .unwrap();
+    }
+
+    #[test]
     fn chmod_checkbox_modal_renders_without_panic() {
         use ratatui::backend::TestBackend;
         use ratatui::Terminal;
-        let modal = Modal::chmod("/var/www/app".into(), 0o0750, true);
+        let modal = Modal::chmod(vec![PathBuf::from("/var/www/app")], 0o0750, true);
         let mut term = Terminal::new(TestBackend::new(80, 24)).unwrap();
         term.draw(|frame| render(frame, &modal, frame.area()))
             .unwrap();

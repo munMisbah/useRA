@@ -170,7 +170,7 @@ impl AclEntry {
 }
 
 /// Parsed ACL state for a selected path.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AclInfo {
     /// Whether `getfacl` was available and succeeded.
     pub available: bool,
@@ -523,9 +523,9 @@ pub fn validate_acl_spec(raw: &str) -> Result<String, String> {
         || perms.len() > 3
         || !perms
             .bytes()
-            .all(|b| matches!(b, b'r' | b'w' | b'x' | b'-'))
+            .all(|b| matches!(b, b'r' | b'w' | b'x' | b'X' | b'-'))
     {
-        return Err(format!("invalid ACL permissions '{perms}' (use r/w/x/-)"));
+        return Err(format!("invalid ACL permissions '{perms}' (use r/w/x/X/-)"));
     }
     Ok(s.to_string())
 }
@@ -656,6 +656,8 @@ mod tests {
         assert!(validate_owner(":").is_err());
 
         assert!(validate_acl_spec("u:deploy:rwx").is_ok());
+        assert!(validate_acl_spec("u:deploy:rwX").is_ok());
+        assert!(validate_acl_spec("d:g:devs:r-X").is_ok());
         assert!(validate_acl_spec("d:g:devs:r-x").is_ok());
         assert!(validate_acl_spec("m::rx").is_ok());
         assert!(validate_acl_spec("u:deploy:bad").is_err());

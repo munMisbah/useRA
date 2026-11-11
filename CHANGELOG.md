@@ -19,6 +19,34 @@ tar -czf usera-linux-x86_64.tar.gz -C target/release usera
 sha256sum usera-linux-x86_64.tar.gz > usera-linux-x86_64.tar.gz.sha256
 ```
 
+## [1.2.0] — 2026-11-12
+
+### Added
+
+- **Multi-Select Resource Operations (`Space`)**:
+  Mark multiple files/folders in `Resources` or the Hybrid right panel (`✓`
+  row markers, `[N sel]` header badge, `Esc` to clear) and run batch `A`,
+  `X`, `B`, `M`, `O`, or `V` across all selected targets with per-path audit
+  logging.
+- **Copy & Paste / Clone ACL (`C` / `V`)**:
+  Copy headerless ACL rules (`getfacl -c -p -P`, `[ACL:<src>]` badge) and
+  paste (`setfacl --set-file=-`) onto single or multi-selected targets with
+  `YES` confirmation, optional `-R` recursive guard, and automatic `default:`
+  stripping when pasting onto regular files.
+- **Conditional Execute `X`, Simultaneous Access + Default ACLs, & Existing ACL Sync**:
+  - `Set ACL` (`A`) now supports `-` / `x` / `X` (`rwX` conditional execute
+    on directories and existing executables) and separate `Apply Access ACL`
+    + `Apply Default ACL (d:)` checkboxes applied together in one `setfacl -m`.
+  - Selecting or prefilling a user/group/mask/other in `Set ACL` now
+    automatically loads existing `r/w/x` and Access/Default flags from the
+    selected entry (`(loaded existing ACL)`).
+
+### Fixed
+
+- Pressing `Enter` while the `Set ACL` user/group autocomplete dropdown is
+  visible now picks the highlighted suggestion and advances to `Perms` instead
+  of prematurely submitting the modal.
+
 ## [1.1.1] — 2026-11-11
 
 ### Security & Fixed

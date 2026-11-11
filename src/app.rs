@@ -4,6 +4,7 @@
 use crate::models::{AclInfo, ResourceEntry};
 use crate::services::AppData;
 use ratatui::widgets::TableState;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 /// Identifiable main pages, matching the sidebar navigation order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -108,6 +109,14 @@ pub struct Selections {
     pub sessions_table: TableState,
 }
 
+/// Snapshot of copied ACL rules (`C` in Resource Manager) for cloning onto targets (`V`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopiedAcl {
+    pub source_label: String,
+    pub rules_text: String,
+    pub rule_count: usize,
+}
+
 /// Resource Manager browser state (shared by `Page::Resources` and Hybrid right panel).
 #[derive(Debug)]
 pub struct ResourceState {
@@ -127,6 +136,10 @@ pub struct ResourceState {
     pub hybrid_panel: bool,
     /// Whether dotfiles (`.`-prefixed entries) are shown in the Resource browser.
     pub show_hidden: bool,
+    /// Multi-selected resource paths (`Space` toggles).
+    pub selected_paths: BTreeSet<PathBuf>,
+    /// Copied ACL rules for Copy/Paste ACL (`C` / `V`).
+    pub acl_clipboard: Option<CopiedAcl>,
 }
 
 impl Default for ResourceState {
@@ -140,6 +153,8 @@ impl Default for ResourceState {
             load_error: None,
             hybrid_panel: true,
             show_hidden: true,
+            selected_paths: BTreeSet::new(),
+            acl_clipboard: None,
         }
     }
 }
@@ -431,6 +446,46 @@ impl App {
             .copied()
     }
 
+    /// Toggles multi-selection on the highlighted entry (excluding `..`) and advances one row.
+    pub fn toggle_select_resource(&mut self) {
+        let Some(entry) = self.selected_resource().cloned() else {
+            return;
+        };
+        if !entry.is_parent_link {
+            if !self.resources.selected_paths.remove(&entry.path) {
+                self.resources.selected_paths.insert(entry.path);
+            }
+        }
+        let len = self.active_resource_entries().len();
+        if self.resources.selected + 1 < len {
+            self.move_resource_selection(1);
+        }
+    }
+
+    /// Clears all multi-selected resource paths.
+    pub fn clear_selected_resources(&mut self) {
+        self.resources.selected_paths.clear();
+    }
+
+    /// Returns the multi-selected resource entries (in displayed order),
+    /// or falls back to the currently highlighted entry if non-parent.
+    pub fn target_resource_entries(&self) -> Vec<&ResourceEntry> {
+        if !self.resources.selected_paths.is_empty() {
+            let list: Vec<&ResourceEntry> = self
+                .active_resource_entries()
+                .into_iter()
+                .filter(|e| !e.is_parent_link && self.resources.selected_paths.contains(&e.path))
+                .collect();
+            if !list.is_empty() {
+                return list;
+            }
+        }
+        self.selected_resource()
+            .filter(|e| !e.is_parent_link)
+            .into_iter()
+            .collect()
+    }
+
     /// Moves selection in the Resource browser and updates ACL info.
     pub fn move_resource_selection(&mut self, delta: isize) {
         let len = self.active_resource_entries().len();
@@ -457,6 +512,7 @@ impl App {
             };
             self.resources.cwd = entry.path;
             self.resources.selected = 0;
+            self.resources.selected_paths.clear();
             if self.page == Page::Resources {
                 self.search_active = false;
                 self.search_query.clear();
@@ -474,6 +530,7 @@ impl App {
             let prev = self.resources.cwd.clone();
             self.resources.cwd = parent;
             self.resources.selected = 0;
+            self.resources.selected_paths.clear();
             if self.page == Page::Resources {
                 self.search_active = false;
                 self.search_query.clear();
@@ -490,6 +547,7 @@ impl App {
         }
         self.resources.cwd = path;
         self.resources.selected = 0;
+        self.resources.selected_paths.clear();
         if self.page == Page::Resources {
             self.search_active = false;
             self.search_query.clear();
