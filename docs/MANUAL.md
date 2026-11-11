@@ -111,10 +111,36 @@ empty on systems without systemd-logind.
 ### Resources (Permission & POSIX ACL Manager)
 
 Browse directories, inspect Unix modes, ownership, and parsed POSIX ACLs
-(`getfacl -p`). On wide terminals (`>= 105x24`), Users and Groups also open
-a contextual Resources panel on the right with effective permissions shown
-in the Details strip below. Recursive (`-R`) mutations refuse protected OS
-root paths (`/`, `/etc`, `/usr`, `/var`, etc.) and require preview + `YES`.
+(`getfacl -p -P`). On wide terminals (`>= 105x24`), Users and Groups also open
+a contextual Resources panel on the right with calculated POSIX/ACL
+permissions shown in the Details strip below. Recursive (`-R`) mutations
+refuse protected OS root paths (`/`, `/etc`, `/usr`, `/var`, etc.) and
+require preview + `YES`.
+
+#### Limitations & Kernel Boundaries
+
+Not every directory or file can have its mode, ownership, or ACL modified, and
+calculated `POSIX/ACL` permissions are not a guarantee of actual process access:
+
+- **Unsupported filesystems:** Native Debian filesystems (`ext4`, `xfs`,
+  `btrfs`) support POSIX modes and ACLs. Non-POSIX or virtual filesystems
+  (`FAT32`/`vfat`, `exFAT`, certain `FUSE`/`sshfs` mounts, `/proc`, `/sys`) do
+  not support POSIX ACLs (`Operation not supported`) or per-file `chmod`/`chown`.
+- **Symlinks:** Symbolic links do not have independent POSIX ACLs; `useRA`
+  inspects them physically (`getfacl -P`) and runs `chown -h` so symlink
+  targets are not silently altered.
+- **Immutable files (`chattr +i`):** Entries with the immutable attribute
+  cannot be altered — even by `root` — until `chattr -i` is run.
+- **Mount flags (`ro`, `noexec`, `nosuid`):** Read-only mounts reject all
+  permission/ACL changes; `noexec` blocks execution even when `+x` is set.
+- **AppArmor, systemd sandboxing & capabilities:** Debian 12/13 enables
+  AppArmor per application profile (`/etc/apparmor.d/`), and many system
+  services restrict paths via systemd (`ProtectSystem`, `ReadOnlyPaths`). A
+  service may still fail with `Permission denied` even when `POSIX/ACL` shows
+  `rwx`. Conversely, `root` (`UID 0`) normally bypasses DAC via
+  `CAP_DAC_OVERRIDE` unless constrained by MAC, mounts, or immutable flags.
+- **`acl` package:** `getfacl`/`setfacl` require the Debian `acl` package
+  (`sudo apt install acl`); standard `chmod`/`chown` continue working without it.
 
 ### Settings
 
@@ -149,4 +175,6 @@ Theme state, privilege state, data source, shortcut reference pointer.
 | "stale list? press [r] to reload" | Someone changed accounts outside useRA — press `r` |
 | Sessions page empty | No systemd-logind sessions; not an error |
 | Details panel missing | Terminal narrower than 80 columns |
+| `"Operation not supported"` on ACL/chmod | Target resides on a non-POSIX/virtual filesystem (`vfat`, `exFAT`, `/proc`, `/sys`, FUSE) |
+| `"Operation not permitted"` even as `sudo` | Target may be on a `ro` mount, marked immutable (`lsattr`/`chattr +i`), or restricted by container/capabilities |
 | Operation fails with tool stderr | The raw error is shown in the status bar; common causes are mapped to hints |

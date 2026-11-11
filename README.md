@@ -43,7 +43,7 @@ Jika sudah pernah menginstall, cukup jalankan:
 
 ```sh
 usera update        # atau: sudo usera update (jika di /usr/local/bin)
-usera --version     # cek versi terpasang (v1.1.0)
+usera --version     # cek versi terpasang (v1.1.1)
 usera --help        # ringkasan perintah CLI
 ```
 
@@ -146,7 +146,7 @@ sudo usera    # mode administratif penuh (tulis + audit log)
 
 | Properti | Keterangan |
 | --- | --- |
-| Versi Saat Ini | `1.1.0` (lihat [CHANGELOG.md](CHANGELOG.md)) |
+| Versi Saat Ini | `1.1.1` (lihat [CHANGELOG.md](CHANGELOG.md)) |
 | Bahasa & UI | Rust (`edition 2021`, MSRV `1.88`) + Ratatui `0.30` + Crossterm `0.29` |
 | Platform Target | Debian 12 (bookworm) & Debian 13 (trixie), `x86_64` |
 | Integrasi Sistem | `getent`, `uname`, `loginctl`, `useradd`/`usermod`/`userdel`, `groupadd`/`groupmod`/`groupdel`, `gpasswd`, `passwd`, `chage`, `chpasswd`, `chmod`, `chown`, `getfacl`/`setfacl` |

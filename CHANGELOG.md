@@ -19,6 +19,22 @@ tar -czf usera-linux-x86_64.tar.gz -C target/release usera
 sha256sum usera-linux-x86_64.tar.gz > usera-linux-x86_64.tar.gz.sha256
 ```
 
+## [1.1.1] — 2026-11-11
+
+### Security & Fixed
+
+- **Atomic Audit Log Opening (`src/system/audit.rs`, `privilege.rs`)**:
+  Eliminated TOCTOU symlink race conditions by opening the audit directory
+  with `O_NOFOLLOW | O_DIRECTORY` and `audit.log` with `O_NOFOLLOW`, verifying
+  regular-file/dir types and EUID ownership via `fstat`, and applying
+  permissions (`0750` / `0600`) via `fchmod` on the open descriptors.
+- **POSIX/ACL Readout Clarity & Root UID 0 Handling (`src/models/resource.rs`, `ui/pages/resources.rs`)**:
+  Clarified the Hybrid Details label as `POSIX/ACL for`, handled `UID 0`
+  (`root`) DAC bypass accurately (`rwx (root bypass)` / `rw- (root bypass; no +x)`),
+  and documented filesystem/kernel permission boundaries (`vfat`/`exFAT`,
+  `ro`/`noexec` mounts, `chattr +i`, AppArmor, systemd sandboxing) in
+  `docs/MANUAL.md` and `docs/SECURITY.md`.
+
 ## [1.1.0] — 2026-11-11
 
 ### Added

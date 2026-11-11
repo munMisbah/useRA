@@ -202,6 +202,9 @@ impl AclInfo {
             return standard_effective_for_user(username, user_uid, user_gid, user_groups, entry);
         }
 
+        if user_uid == 0 && entry.uid != 0 && username != entry.owner_name {
+            return root_bypass_label(entry, Some(self));
+        }
         let mask = self
             .entries
             .iter()
@@ -341,6 +344,9 @@ fn standard_effective_for_user(
     user_groups: &[String],
     entry: &ResourceEntry,
 ) -> String {
+    if user_uid == 0 && entry.uid != 0 && username != entry.owner_name {
+        return root_bypass_label(entry, None);
+    }
     let shift = if user_uid == entry.uid || username == entry.owner_name {
         6
     } else if user_gid == entry.gid || user_groups.iter().any(|g| g == &entry.group_name) {
@@ -358,6 +364,20 @@ fn standard_effective_for_user(
         _ => "other",
     };
     format!("{r}{w}{x} ({src})")
+}
+
+fn root_bypass_label(entry: &ResourceEntry, acl: Option<&AclInfo>) -> String {
+    let has_any_exec = (entry.mode & 0o111 != 0)
+        || acl.is_some_and(|a| {
+            a.entries
+                .iter()
+                .any(|e| !e.is_default && e.effective_perms().contains('x'))
+        });
+    if entry.kind == EntryKind::Directory || has_any_exec {
+        "rwx (root bypass)".to_string()
+    } else {
+        "rw- (root bypass; no +x)".to_string()
+    }
 }
 
 fn or_rwx(bits: &mut [bool; 3], perms: &str) {
@@ -713,6 +733,42 @@ mod tests {
         );
         assert_eq!(
             acl.effective_for_user("guest", 1002, 1002, &[], &entry),
+            "--- (other)"
+        );
+    }
+
+    #[test]
+    fn evaluates_root_bypass_and_standard_fallback_without_acl() {
+        let regular_no_exec = ResourceEntry {
+            name: ".env".into(),
+            path: PathBuf::from("/var/www/.env"),
+            kind: EntryKind::File,
+            mode: 0o600,
+            uid: 1001,
+            gid: 1001,
+            owner_name: "deploy".into(),
+            group_name: "deploy".into(),
+            size: 64,
+            is_parent_link: false,
+            has_acl: false,
+            symlink_target: None,
+        };
+        let unavailable_acl = AclInfo {
+            available: false,
+            entries: Vec::new(),
+            error: Some("no getfacl".into()),
+        };
+
+        assert_eq!(
+            unavailable_acl.effective_for_user("root", 0, 0, &[], &regular_no_exec),
+            "rw- (root bypass; no +x)"
+        );
+        assert_eq!(
+            unavailable_acl.effective_for_user("deploy", 1001, 1001, &[], &regular_no_exec),
+            "rw- (owner)"
+        );
+        assert_eq!(
+            unavailable_acl.effective_for_user("guest", 1002, 1002, &[], &regular_no_exec),
             "--- (other)"
         );
     }

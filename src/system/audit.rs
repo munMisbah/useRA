@@ -91,43 +91,114 @@ fn format_utc(secs: u64) -> String {
 /// (caller decides whether to surface it; it never replaces the
 /// operation result).
 pub fn record(entry: &AuditEntry) -> Result<(), String> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+    record_to_path(&log_path(), entry)
+}
 
-    let path = log_path();
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "x86", target_arch = "riscv64")
+))]
+const O_NOFOLLOW: i32 = 0o400000;
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "x86", target_arch = "riscv64")
+))]
+const O_DIRECTORY: i32 = 0o200000;
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const O_NOFOLLOW: i32 = 0o100000;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const O_DIRECTORY: i32 = 0o40000;
+
+#[cfg(not(all(
+    target_os = "linux",
+    any(
+        target_arch = "x86_64",
+        target_arch = "x86",
+        target_arch = "riscv64",
+        target_arch = "aarch64"
+    )
+)))]
+const O_NOFOLLOW: i32 = 0;
+#[cfg(not(all(
+    target_os = "linux",
+    any(
+        target_arch = "x86_64",
+        target_arch = "x86",
+        target_arch = "riscv64",
+        target_arch = "aarch64"
+    )
+)))]
+const O_DIRECTORY: i32 = 0;
+
+fn record_to_path(path: &std::path::Path, entry: &AuditEntry) -> Result<(), String> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+
+    let expected_uid = crate::system::privilege::effective_uid();
     if let Some(parent) = path.parent() {
-        if let Ok(meta) = std::fs::symlink_metadata(parent) {
-            if meta.file_type().is_symlink() {
-                return Err(format!(
-                    "refusing audit dir {}: path is a symlink",
-                    parent.display()
-                ));
-            }
-        } else {
-            std::fs::DirBuilder::new()
+        if !parent.as_os_str().is_empty() {
+            if let Err(err) = std::fs::DirBuilder::new()
                 .recursive(true)
                 .mode(0o750)
                 .create(parent)
-                .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+            {
+                if !parent.exists() {
+                    return Err(format!("cannot create {}: {err}", parent.display()));
+                }
+            }
+            let dir_fd = OpenOptions::new()
+                .read(true)
+                .custom_flags(O_NOFOLLOW | O_DIRECTORY)
+                .open(parent)
+                .map_err(|e| format!("refusing audit dir {}: {e}", parent.display()))?;
+            let dir_meta = dir_fd
+                .metadata()
+                .map_err(|e| format!("cannot fstat {}: {e}", parent.display()))?;
+            if !dir_meta.is_dir() {
+                return Err(format!(
+                    "refusing audit dir {}: not a directory",
+                    parent.display()
+                ));
+            }
+            if dir_meta.uid() != expected_uid {
+                return Err(format!(
+                    "refusing audit dir {}: unexpected owner UID {}",
+                    parent.display(),
+                    dir_meta.uid()
+                ));
+            }
+            dir_fd
+                .set_permissions(std::fs::Permissions::from_mode(0o750))
+                .map_err(|e| format!("cannot fchmod {}: {e}", parent.display()))?;
         }
-        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o750))
-            .map_err(|e| format!("cannot chmod {}: {e}", parent.display()))?;
     }
-    if let Ok(meta) = std::fs::symlink_metadata(&path) {
-        if meta.file_type().is_symlink() {
-            return Err(format!(
-                "refusing audit file {}: path is a symlink",
-                path.display()
-            ));
-        }
-    }
+
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .mode(0o600)
-        .open(&path)
+        .custom_flags(O_NOFOLLOW)
+        .open(path)
         .map_err(|e| format!("cannot open {}: {e}", path.display()))?;
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-        .map_err(|e| format!("cannot chmod {}: {e}", path.display()))?;
+    let file_meta = file
+        .metadata()
+        .map_err(|e| format!("cannot fstat {}: {e}", path.display()))?;
+    if !file_meta.is_file() {
+        return Err(format!(
+            "refusing audit file {}: not a regular file",
+            path.display()
+        ));
+    }
+    if file_meta.uid() != expected_uid {
+        return Err(format!(
+            "refusing audit file {}: unexpected owner UID {}",
+            path.display(),
+            file_meta.uid()
+        ));
+    }
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("cannot fchmod {}: {e}", path.display()))?;
+
     let status = if entry.ok { "OK" } else { "FAIL" };
     let mut line = format!(
         "{} {} op={} target={}",
@@ -205,5 +276,33 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(dir_mode, 0o750);
+    }
+
+    #[test]
+    fn rejects_symlink_log_file_and_symlink_parent_atomically() {
+        let base = std::env::temp_dir().join(format!("usera_audit_toctou_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        let victim = base.join("victim.txt");
+        std::fs::write(&victim, b"untouched\n").unwrap();
+
+        // Symlink as audit file must fail atomically via O_NOFOLLOW without modifying target.
+        let symlink_log = base.join("audit.log");
+        std::os::unix::fs::symlink(&victim, &symlink_log).unwrap();
+        let entry = AuditEntry::from_result("toctou_test", "x", true, "");
+        let err = record_to_path(&symlink_log, &entry).unwrap_err();
+        assert!(err.contains("cannot open"), "unexpected error: {err}");
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "untouched\n");
+
+        // Symlink as audit parent directory must fail via O_NOFOLLOW | O_DIRECTORY.
+        let real_dir = base.join("real_dir");
+        std::fs::create_dir_all(&real_dir).unwrap();
+        let symlink_dir = base.join("sym_dir");
+        std::os::unix::fs::symlink(&real_dir, &symlink_dir).unwrap();
+        let err_dir = record_to_path(&symlink_dir.join("audit.log"), &entry).unwrap_err();
+        assert!(err_dir.contains("refusing audit dir"), "got: {err_dir}");
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

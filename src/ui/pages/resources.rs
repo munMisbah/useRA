@@ -124,14 +124,14 @@ pub fn render_hybrid_bottom_details(frame: &mut Frame, app: &App, area: Rect) {
                     &u.supplementary_groups,
                     res,
                 );
-                (format!("Effective for '{}': ", u.name), eff)
+                (format!("POSIX/ACL for '{}': ", u.name), eff)
             }),
             Page::Groups => app.selected_group().map(|g| {
                 let eff = app
                     .resources
                     .selected_acl
                     .effective_for_group(&g.name, g.gid, res);
-                (format!("Effective for '{}': ", g.name), eff)
+                (format!("POSIX/ACL for '{}': ", g.name), eff)
             }),
             _ => None,
         };

@@ -63,7 +63,10 @@ Display the target account or group before confirmation.
 
 Record administrative actions and their results.
 
-Protect log files from unauthorized modification where practical.
+Open audit directories with `O_NOFOLLOW | O_DIRECTORY` and audit log files
+with `O_NOFOLLOW`, then verify ownership/file type via `fstat` and enforce
+explicit permissions (`0750` dir / `0600` file) via `fchmod` on the open
+descriptors.
 
 Never log passwords, password hashes, or authentication secrets.
 
@@ -81,3 +84,14 @@ If an operation fails:
 - Preserve the original system state as far as possible.
 - Do not claim success without verifying the command result.
 - Refresh account information when appropriate.
+
+## 10. Filesystem & Permission Boundaries
+
+- Resource Manager `POSIX/ACL` readouts evaluate POSIX mode bits and POSIX.1e
+  ACLs only; actual kernel enforcement also depends on filesystem support
+  (`ext4`/`xfs`/`btrfs` vs `vfat`/`exFAT`/`/proc`/`/sys`), mount options
+  (`ro`/`noexec`), immutable attributes (`chattr +i`), Linux capabilities,
+  systemd unit sandboxing, and AppArmor/SELinux profiles.
+- `chmod`/`chown`/`setfacl` operations on symlinks avoid silent dereferencing
+  (`getfacl -P`, `chown -h`), and recursive (`-R`) changes refuse protected OS
+  root directories.

@@ -5,11 +5,11 @@
 
 /// Whether the current process runs as root.
 pub fn is_root() -> bool {
-    nix_free_uid() == 0
+    effective_uid() == 0
 }
 
-/// Reads the effective UID without external crates.
-fn nix_free_uid() -> u32 {
+/// Reads the effective UID of the current process without external crates.
+pub fn effective_uid() -> u32 {
     // SAFETY: geteuid is always safe to call on POSIX systems.
     unsafe { libc_geteuid() }
 }
